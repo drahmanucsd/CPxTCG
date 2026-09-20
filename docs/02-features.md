@@ -84,13 +84,23 @@ because a pianist will ask for them within a week.
   chromatic approach logic), ride/hi-hat/brushes patterns for swing / bossa / ballad / straight-8
   / waltz / latin, optional piano comping ghost track. This is the *reliable* backing track —
   tempo-flexible, loopable, always in sync. YouTube is a bonus on top.
-- **YouTube backing track** (T2): the app searches `"<tune> backing track"` and shows the results
-  on the tune page; you pick one once and it's remembered (a pasted link is the fallback). Embedded
+- **Backing tracks, zero interaction** (T2): a **curated catalog** ships with the app — for every
+  standard, a verified YouTube backing track with its tempo and the video time of beat 1, so
+  "Play with the track" just plays in sync. Built by `scripts/curate-backing.ts` (search + rank:
+  embeddable, right length, right channels, "no piano" preferred), verified once at a piano
+  (tap beat 1 → exported from Devices → merged). Tunes not in the catalog fall back to a live
+  search, then a pasted link; the first tap is remembered so it's automatic from then on. Embedded
   player, **tap-to-sync** (tap beat 1 of the form; enter/tap tempo), the app runs a bar clock
   from that anchor and shows the changes in time; re-anchor button for drift; loop a section via
   seek; playback-rate control (0.5×–1.5× via the player). Per-tune saved sync so it's set up once.
-- **Uploaded audio** ★ (T3): drop an mp3/wav, same tap-to-sync; optional beat-tracking to
-  auto-detect tempo.
+- **Records — play with the actual recording, minus you** ★ (T3): drop your own audio for a tune
+  (a mix, or stems from a separator) → per-stem mute/solo/gain (piano off by default, keep Chet's
+  horn, bass and drums) → played on the audio clock, so once beat 1 is tapped (and saved) the
+  chart is sample-accurate against the record. Then, in order: **in-browser stem separation**
+  (Demucs 6-stem via WASM — vocals, drums, bass, piano, guitar, other; minutes per track, nothing
+  uploaded), **beat tracking on the drum stem** → tempo map so drifting live records stay in sync,
+  and **form alignment** (chart chroma vs audio chroma) so bar 1 of every chorus is found without
+  taps. Legally clean because the audio is yours and never leaves the device.
 
 ## D. Input (T1: MIDI + on-screen; T3: mic + voice)
 

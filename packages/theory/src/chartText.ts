@@ -122,3 +122,8 @@ function parseTimeSig(s: string): [number, number] {
 export function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
+
+/** Normalized title for catalog lookups: "(Back Home Again in) Indiana" → "back-home-again-in-indiana", "The Girl From Ipanema" → "girl-from-ipanema". */
+export function titleKey(title: string): string {
+  return slug(title.toLowerCase().replace(/[()]/g, ' ').replace(/^\s*(the|a|an)\s+/, '').replace(/\s*\((?:take|alt|version).*?\)\s*$/, ''));
+}

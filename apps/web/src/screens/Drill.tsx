@@ -12,6 +12,7 @@ import { BeatPulse } from '../components/BeatPulse';
 import { ChordGrid } from '../components/ChordGrid';
 import { YouTube, type YTPlayer } from '../components/YouTube';
 import { PageImage } from './Tune';
+import { StemPlayer, loadStems } from '../lib/records';
 import { recentAttempts, smartWeight } from '../lib/stats';
 import { FAMILY_LABEL, suffixOf } from '../lib/suffix';
 import { speak, spokenChord } from '../lib/speech';
@@ -55,6 +56,10 @@ export default function Drill() {
   const speechRef = useRef<SpeechInput | null>(null);
   const [heard, setHeard] = useState<{ text: string; ok: boolean | null } | null>(null);
   const [pageUrl, setPageUrl] = useState<string | null>(null);
+  const stemRef = useRef<StemPlayer | null>(null);
+  const [stems, setStems] = useState<Array<{ key: string; name: string; gain: number; muted: boolean }>>([]);
+  const [recordReady, setRecordReady] = useState(false);
+  const syncPoll = useRef<number | null>(null);
   const [showPage, setShowPage] = useState(true);
   useEffect(() => {
     let url: string | null = null;
@@ -127,7 +132,7 @@ export default function Drill() {
     });
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
-    runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; void saveAndReview(spec, summary); });
+    runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
     if (spec.speak && speechSupported()) {
       const sp = new SpeechInput();
@@ -153,7 +158,48 @@ export default function Drill() {
     }
     runner.on('target', () => setHeard(null));
     setReady(true);
-    if (spec.backing) { transport.muted = true; setArmed(true); return; } // wait for the tap on beat 1
+    if (spec.backing) {
+      transport.muted = true;
+      const b = spec.backing;
+      const countInSec = (spec.pacing.countInBars * spec.pacing.timeSig.beats * 60) / (b.bpm ?? spec.pacing.bpm);
+      if (b.bpm) runner.setBpm(b.bpm);
+      if (b.kind === 'record') {
+        const rec = await db.records.get(b.recordId);
+        if (!rec) { setArmed(true); return; }
+        const player = new StemPlayer(ctx, await loadStems(ctx, rec));
+        stemRef.current = player;
+        setStems(player.stems.map((st) => ({ key: st.ref.name + st.ref.blobId, name: st.ref.name, gain: st.ref.gain, muted: st.ref.muted })));
+        setRecordReady(true);
+        const S = ctx.currentTime + 0.15;
+        if (b.anchorSec !== undefined) {
+          // known anchor: start the record and the count-in so beat 1 lands exactly on anchorSec
+          const at = S + b.anchorSec - countInSec;
+          const offset = at < ctx.currentTime + 0.05 ? countInSec - b.anchorSec : 0; // anchor too early for a full count-in: skip into the record
+          player.play(S, offset);
+          runner.start({ at: at + offset });
+        } else { player.play(S); setArmed(true); }
+        return;
+      }
+      if (b.anchorSec !== undefined && ytRef.current) {
+        // known anchor: seek before it, then start the count-in when the video reaches the pre-roll point
+        const p = ytRef.current;
+        const pre = Math.max(0, b.anchorSec - countInSec);
+        p.seekTo(pre, true); p.playVideo();
+        const poll = () => {
+          const cur = p.getCurrentTime();
+          if (p.getPlayerState() === 1 && cur >= pre) {
+            const at = ctx.currentTime + (b.anchorSec! - cur) - countInSec + (cur - pre); // = now + (anchor - cur) - countIn ... aligned so beat 1 = anchor
+            runner.start({ at: ctx.currentTime + (b.anchorSec! - cur) - countInSec });
+            void at;
+            return;
+          }
+          syncPoll.current = requestAnimationFrame(poll);
+        };
+        syncPoll.current = requestAnimationFrame(poll);
+        return;
+      }
+      setArmed(true); return; // wait for the tap on beat 1
+    }
     runner.start();
   }, [spec, settings.latencyOffsetMs]);
 
@@ -171,10 +217,27 @@ export default function Drill() {
       runnerRef.current?.setBpm(bpm);
     }
   }, []);
+  const saveSync = useCallback((anchorSec: number, bpm: number) => {
+    const b = spec?.backing; const song = spec?.song;
+    if (!b || !song) return;
+    if (b.kind === 'record') void db.records.update(b.recordId, { anchorSec: Math.round(anchorSec * 1000) / 1000, bpm });
+    else {
+      const st = useSettings.getState();
+      const prev = st.backingBySong[song.songId];
+      st.set({ backingBySong: { ...st.backingBySong, [song.songId]: { videoId: b.videoId, title: prev?.title ?? b.videoId, tuneTitle: song.title, bpm, anchorSec: Math.round(anchorSec * 1000) / 1000, verified: true } } });
+    }
+  }, [spec]);
   const goOnOne = useCallback(() => {
     const run = runnerRef.current;
     if (!run) return;
-    if (run.state === 'idle') { run.start(); setArmed(false); }
+    const b = spec?.backing;
+    if (run.state === 'idle') {
+      const { ctx } = getAudio();
+      run.start(); setArmed(false);
+      // remember where beat 1 was so next time it's automatic
+      if (b?.kind === 'record' && stemRef.current) saveSync(stemRef.current.position(ctx.currentTime), run.bpm);
+      else if (b?.kind === 'youtube' && ytRef.current) saveSync(ytRef.current.getCurrentTime(), run.bpm);
+    }
     else if (run.state === 'running' || run.state === 'countIn') { run.pause(); run.resume(); } // re-anchor on this chord
     else if (run.state === 'paused') run.resume();
   }, []);
@@ -218,7 +281,7 @@ export default function Drill() {
     return () => { window.removeEventListener('keydown', kd); offCC(); };
   }, [ready, spec, goOnOne, tapTempo]);
 
-  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); speechRef.current?.stop(); recRef.current?.off(); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
+  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); speechRef.current?.stop(); recRef.current?.off(); stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
 
   const run = runnerRef.current;
   const t = view.target;
@@ -248,7 +311,7 @@ export default function Drill() {
           <Chip>{spec.pacing.mode === 'free' ? 'Free time' : `${spec.pacing.bpm} bpm · ${spec.pacing.beatsPerChord} beats/chord`}</Chip>
           {spec.ladder && <Chip>Speed ladder +{spec.ladder.up}/−{spec.ladder.down}</Chip>}
           {spec.band && <Chip>Band: {[spec.band.bass && 'bass', spec.band.drums && 'drums'].filter(Boolean).join(' + ')} · {spec.band.style}</Chip>}
-          {spec.backing && <Chip>YouTube backing track</Chip>}
+          {spec.backing && <Chip>{spec.backing.kind === 'record' ? 'Your recording (stems)' : 'YouTube backing track'}{spec.backing.anchorSec !== undefined ? ' · auto-sync' : ''}</Chip>}
           {spec.speak && <Chip>Name it & play it (voice)</Chip>}
           {midi.inputMode === 'mic' && <Chip>Microphone input · graded at pitch-class level</Chip>}
         </div>
@@ -280,16 +343,30 @@ export default function Drill() {
 
       {spec.backing && (
         <div className="px-4 pt-2 flex flex-col md:flex-row gap-3 items-start">
-          <YouTube videoId={spec.backing.videoId} onReady={(p) => { ytRef.current = p; }} className="w-full md:w-72 aspect-video rounded-xl overflow-hidden bg-black shrink-0" />
+          {spec.backing.kind === 'youtube' && <YouTube videoId={spec.backing.videoId} onReady={(p) => { ytRef.current = p; }} className="w-full md:w-72 aspect-video rounded-xl overflow-hidden bg-black shrink-0" />}
+          {spec.backing.kind === 'record' && (
+            <div className="card text-sm w-full md:w-72 shrink-0 space-y-1">
+              <div className="label">Stems</div>
+              {!recordReady && <div className="text-ink-faint">decoding…</div>}
+              {stems.map((st) => (
+                <div key={st.key} className="flex items-center gap-2">
+                  <button className={`w-16 text-left text-xs rounded px-1.5 py-0.5 ${st.muted ? 'bg-panel-2 text-ink-faint line-through' : 'bg-accent/20 text-ink'}`} onClick={() => setStems((all) => all.map((x) => { if (x.key !== st.key) return x; const m = !x.muted; stemRef.current?.setStem(x.key, x.gain, m); return { ...x, muted: m }; }))}>{st.name}</button>
+                  <input type="range" min={0} max={1.5} step={0.05} value={st.gain} className="flex-1" onChange={(e) => { const g = +e.target.value; setStems((all) => all.map((x) => { if (x.key !== st.key) return x; stemRef.current?.setStem(x.key, g, x.muted); return { ...x, gain: g }; })); }} />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="card text-sm space-y-2 flex-1">
-            <div className="label">Sync to the track</div>
-            {armed ? (
-              <div className="text-ink-dim">1. Play the video. 2. Tap <kbd>t</kbd> on a few beats to set the tempo{tapBpm ? <span className="text-ink"> — {tapBpm} bpm</span> : ''}. 3. Press <kbd>space</kbd> (or the sustain pedal) exactly on beat 1 of the form.</div>
+            <div className="label">{spec.backing.anchorSec !== undefined ? 'Synced automatically' : 'Sync to the track'}</div>
+            {spec.backing.anchorSec !== undefined && !armed ? (
+              <div className="text-ink-dim">Beat 1 is known for this track — just play. If it drifts, <kbd>space</kbd> on beat 1 re-anchors and updates the saved sync.</div>
+            ) : armed ? (
+              <div className="text-ink-dim">{spec.backing.kind === 'record' ? '1. The record is playing.' : '1. Play the video.'} 2. Tap <kbd>t</kbd> on a few beats to set the tempo{tapBpm ? <span className="text-ink"> — {tapBpm} bpm</span> : ''}. 3. Press <kbd>space</kbd> (or the sustain pedal) exactly on beat 1 of the form. That's saved — next time it's automatic.</div>
             ) : (
               <div className="text-ink-dim">Drifting? Press <kbd>space</kbd> on beat 1 of the current chord to re-anchor, <kbd>[</kbd>/<kbd>]</kbd> to nudge 50 ms, <kbd>t</kbd>×4 to retap the tempo.</div>
             )}
             <div className="flex flex-wrap gap-2">
-              <button className="btn btn-ghost !py-1" onClick={() => ytRef.current?.playVideo()}>Play video</button>
+              {spec.backing.kind === 'youtube' && <button className="btn btn-ghost !py-1" onClick={() => ytRef.current?.playVideo()}>Play video</button>}
               <button className="btn btn-ghost !py-1" onClick={tapTempo}>Tap tempo{tapBpm ? ` (${tapBpm})` : ''}</button>
               <button className="btn btn-primary !py-1" onClick={goOnOne}>{armed ? 'Go — on beat 1' : 'Re-anchor on 1'}</button>
               <button className="btn btn-ghost !py-1" onClick={() => getAudio().transport.nudge(-0.05)}>−50 ms</button>

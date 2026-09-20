@@ -177,9 +177,11 @@ consumers).
 
 ### 7. YouTube backing tracks
 
-Finding: the tune page calls `api/yt-search` (YouTube Data API, key on the server) with
-`"<title>" backing track`, shows thumbnails, and remembers the pick per tune; a bpm in the video
-title pre-fills the tempo. Without a key it links to the YouTube search and accepts a pasted link.
+Finding: `data/backing-catalog.json` (keyed by normalized title) is checked first — a verified
+entry carries `videoId`, `bpm`, `anchorSec` and plays in sync with no interaction. Otherwise the
+tune page calls `api/yt-search` (YouTube Data API, key on the server) with `"<title>" backing
+track`, shows thumbnails and remembers the pick; the first tap on beat 1 is saved (and can be
+exported into the catalog). Without a key it links to the YouTube search and accepts a pasted link.
 Playing: embed via IFrame API. Sync object per (song, videoId): `{ anchorVideoTime, bpm, beatsPerBar,
 formStartBar, playbackRate }`. The app's bar clock = `(player.getCurrentTime() − anchor) ×
 bpm/60 / beatsPerBar`, polled at 60 Hz via `rAF` (getCurrentTime is cheap). UX: press play,
@@ -188,6 +190,24 @@ tap on beat 1 of the form → anchor; tap-tempo 8 beats (or type bpm from the vi
 (human players) is small over a chorus; re-anchor per chorus is a one-tap fix. **No audio
 analysis of the embedded player is possible** (cross-origin), which is why the synthesized
 rhythm section is the primary pacer and YouTube is the "play with the record" bonus.
+
+### 7b. Records: stems, beat tracking, alignment
+
+- **Storage**: `records` (song, stems[], anchorSec, bpm) + `audio` blobs in IndexedDB. Stems are
+  decoded to AudioBuffers and started together on the audio clock (`StemPlayer`), each through
+  its own gain; the transport starts at `S + anchorSec − countIn`, so grading windows are
+  sample-accurate. Tapping beat 1 once stores `anchorSec`; after that it's automatic.
+- **Separation (local)**: Demucs HTDemucs 6-source compiled to WASM (the free-music-demixer
+  approach), run in a Web Worker on the user's file; ~2–6 min per track on a laptop, model
+  (~80 MB) cached after first download. Output = the six stems written to `audio`. A server
+  option (GPU Demucs via Modal/Replicate) can be added behind the same interface for speed —
+  it needs a key and uploads the user's file, so it stays opt-in.
+- **Beat tracking**: onset envelope of the drum stem (or the mix) → autocorrelation tempo → DP
+  beat tracker (Ellis) → a tempo map (beat times). The transport gets a `beatTimes[]` mode
+  where `beatTime(i)` reads the map instead of `start + i·60/bpm`, so nothing downstream changes.
+- **Form alignment**: chart → expected chroma per beat; audio → chroma per beat (from the
+  non-drum stems); subsequence DTW finds bar 1 of each chorus and the intro length. Result:
+  `anchorSec` and chorus boundaries without a tap; the user confirms once.
 
 ### 8. Sheet import (scan → chart)
 

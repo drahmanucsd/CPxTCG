@@ -30,6 +30,10 @@ export interface SessionRow {
 
 export interface DrillRow { id: string; spec: DrillSpec; createdAt: number; updatedAt: number; custom: boolean }
 
+export interface StemRef { name: string; blobId: string; gain: number; muted: boolean }
+export interface RecordRow { id: string; songId: string; tuneTitle: string; label: string; stems: StemRef[]; bpm?: number; anchorSec?: number; createdAt: number }
+export interface AudioRow { id: string; blob: Blob; name: string; createdAt: number }
+
 export interface ImageRow { id: string; blob: Blob; width: number; height: number; createdAt: number }
 
 export interface SongRow { id: string; title: string; composer: string; source: Song['source']; song: Song; updatedAt: number; status?: 'new' | 'learning' | 'known' }
@@ -40,6 +44,8 @@ export class ShedDB extends Dexie {
   drills!: Table<DrillRow, string>;
   songs!: Table<SongRow, string>;
   images!: Table<ImageRow, string>;
+  records!: Table<RecordRow, string>;
+  audio!: Table<AudioRow, string>;
   constructor() {
     super('shed');
     this.version(1).stores({
@@ -59,6 +65,15 @@ export class ShedDB extends Dexie {
       drills: 'id, updatedAt',
       songs: 'id, title, source, updatedAt',
       images: 'id',
+    });
+    this.version(4).stores({
+      attempts: '++id, sessionId, specId, ts, [root+suffix], family, ok',
+      sessions: 'id, specId, startedAt',
+      drills: 'id, updatedAt',
+      songs: 'id, title, source, updatedAt',
+      images: 'id',
+      records: 'id, songId, createdAt',
+      audio: 'id',
     });
   }
 }

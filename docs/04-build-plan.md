@@ -1,7 +1,7 @@
 # 04 — Build plan
 
 > **Status (2026-09-20):** Phases 0–6 have a first implementation on this branch. Per phase: ✅ done as specified · ◐ partial · ☐ not started.
-> Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · Phase 3 ✅ (MusicXML import ☐, block-chord passing-dim rule ☐) · Phase 4 ◐ (YouTube find-and-sync ✅ — search needs the key, uploaded audio ☐, MIDI replay ✅) · Phase 5 ◐ (mic level 1 ✅, Basic Pitch ☐, speech ✅, ear modes ☐) · Phase 6 ◐ (local OCR via Tesseract ✅, bar-box editing ☐ — chart text is edited instead, melody OMR ☐) · Phase 7 ☐.
+> Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · Phase 3 ✅ (MusicXML import ☐, block-chord passing-dim rule ☐) · Phase 4 ◐ (curated-catalog + auto-sync infrastructure ✅, catalog contents ☐ — needs the key and a verification pass; live search ✅ needs the key; Records with stems from files ✅; MIDI replay ✅) · Phase 6b ☐ · Phase 5 ◐ (mic level 1 ✅, Basic Pitch ☐, speech ✅, ear modes ☐) · Phase 6 ◐ (local OCR via Tesseract ✅, bar-box editing ☐ — chart text is edited instead, melody OMR ☐) · Phase 7 ☐.
 > Decisions taken: name **Shed**, Vercel, **local OCR** (Tesseract in the browser, no key), YouTube search is the primary path (`api/yt-search.ts`, needs `YOUTUBE_API_KEY`; paste-URL fallback), chord display is a setting (Real Book default), **no cloud sync / accounts / spaced-repetition scheduler** — progress is local and simple.
 
 Ordered so every phase ends with something you'd actually practice with. Each phase lists the
@@ -76,10 +76,12 @@ working block.
 
 ## Phase 4 — Backing tracks + practice plans (2 sessions)
 
-1. YouTube: the tune page finds tracks via `api/yt-search` and remembers the pick; embed,
-   tap-to-sync, bar clock, nudge/re-anchor, section loop by seek, playback rate.
-2. Uploaded audio with the same sync (Web Audio `AudioBufferSourceNode`, so loops are
-   sample-accurate here).
+1. YouTube: curated catalog first (auto-sync from saved beat-1 offsets), live search via
+   `api/yt-search` second, pasted link last; tap-to-sync saved after one tap; nudge/re-anchor.
+   **Catalog build (needs the key):** `scripts/curate-backing.ts` over the standards list, then a
+   verification pass at a piano — one tap per tune, export from Devices, merge the JSON.
+2. Records: the user's own audio (mix or stems) with per-stem mute/solo/gain, played on the audio
+   clock; one tap saves beat 1, then automatic.
 3. The *Today* generator from weak spots (no scheduler); time-boxed session runner chaining
    blocks; streaks.
 4. MIDI session recording + replay against targets.
@@ -109,6 +111,17 @@ working block.
 4. (Optional) Audiveris path for melody → MusicXML → OSMD.
 - **Done when**: photograph a Real Book page on a phone, fix two chords, and practice it with the
   band with the cursor moving across your photo.
+
+## Phase 6b — Records: separation, beat tracking, alignment (3–4 sessions, R&D)
+
+1. Demucs-in-WASM worker (port or vendor the free-music-demixer build), 6-stem output into the
+   `audio` table, progress UI, model caching. Test with a few of your own recordings.
+2. Beat tracker on the drum stem → tempo map; transport `beatTimes[]` mode; grading windows
+   follow the map.
+3. Form alignment (chart chroma vs audio chroma, subsequence DTW) → anchor + chorus boundaries;
+   confirm-once UI.
+- **Done when**: drop a Chet Baker recording you own, wait for the stems, mute the piano, press
+  play, and the chart follows the record through tempo drift with no taps.
 
 ## Phase 7 — Polish and backlog (ongoing)
 

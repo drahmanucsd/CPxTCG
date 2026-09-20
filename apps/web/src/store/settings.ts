@@ -14,7 +14,7 @@ export interface Settings {
   level: 'learning' | 'tunes' | 'fluency';
   onboarded: boolean;
   /** chosen YouTube backing track per tune id */
-  backingBySong: Record<string, { videoId: string; title: string; bpm?: number }>;
+  backingBySong: Record<string, { videoId: string; title: string; bpm?: number; anchorSec?: number; verified?: boolean; tuneTitle?: string }>;
   set: (patch: Partial<Settings>) => void;
 }
 

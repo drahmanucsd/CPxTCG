@@ -14,7 +14,7 @@ export async function saveSong(song: Song): Promise<void> {
 }
 
 export interface TunePracticeOptions {
-  mode: 'changes' | 'quiz' | 'iiVs' | 'track';
+  mode: 'changes' | 'quiz' | 'iiVs' | 'track' | 'record';
   families: string[];
   voiceLeading: 'strict' | 'off';
   band: BandSpec | null;
@@ -26,6 +26,8 @@ export interface TunePracticeOptions {
   halfTime: boolean;
   strictness?: DrillSpec['strictness'];
   youtube?: string;
+  anchorSec?: number;
+  recordId?: string;
 }
 
 function songRef(song: Song, form: FormBar[], from: number, to: number): SongRef {
@@ -83,7 +85,14 @@ export function tuneDrillSpec(base: Song, o: TunePracticeOptions): DrillSpec {
   };
   if (o.band && timed) spec.band = { ...o.band, style: song.style };
   const vid = o.mode === 'track' && o.youtube ? youtubeId(o.youtube) : null;
-  if (vid && timed) { spec.backing = { kind: 'youtube', videoId: vid }; spec.pacing.countInBars = 0; spec.band = undefined; spec.name = `${song.title} — with backing track`; }
+  if (vid && timed) {
+    spec.backing = { kind: 'youtube', videoId: vid, ...(o.anchorSec !== undefined ? { anchorSec: o.anchorSec, bpm: o.bpm } : {}) };
+    spec.pacing.countInBars = o.anchorSec !== undefined ? 1 : 0; spec.band = undefined; spec.name = `${song.title} — with backing track`; spec.id += `-${vid}`;
+  }
+  if (o.mode === 'record' && o.recordId && timed) {
+    spec.backing = { kind: 'record', recordId: o.recordId, ...(o.anchorSec !== undefined ? { anchorSec: o.anchorSec, bpm: o.bpm } : {}) };
+    spec.pacing.countInBars = 1; spec.band = undefined; spec.name = `${song.title} — with the record`; spec.id += `-${o.recordId}`;
+  }
   return spec;
 }
 

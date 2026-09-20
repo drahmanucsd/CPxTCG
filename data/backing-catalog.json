@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "_about": "Curated YouTube backing tracks keyed by normalized tune title. Built by scripts/curate-backing.ts (needs YOUTUBE_API_KEY), verified once at a piano through the app (Devices → Export verified syncs), merged here. anchorSec = video time of beat 1 of the first chorus; with bpm it makes sync automatic.",
+  "tracks": {}
+}

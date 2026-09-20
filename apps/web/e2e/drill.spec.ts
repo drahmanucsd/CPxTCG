@@ -64,7 +64,7 @@ test('tunes: library, tune page, play the changes with the band', async ({ page 
   await page.getByText('Flat form').click();
   await page.getByRole('button', { name: 'B', exact: true }).click();
   await expect(page.getByText(/bars 17–24/).first()).toBeVisible();
-  await page.getByRole('button', { name: /Play the changes/ }).click();
+  await page.getByRole('button', { name: /Play with the band/ }).click();
   await expect(page.getByRole('heading', { name: /I Got Rhythm — play the changes/ })).toBeVisible();
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.getByText('Count-in')).toBeHidden({ timeout: 6000 });

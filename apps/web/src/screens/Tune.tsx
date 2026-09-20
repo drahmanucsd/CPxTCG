@@ -8,6 +8,8 @@ import { loadSong, tuneDrillSpec, type TunePracticeOptions } from '../lib/songs'
 import { FAMILY_LABEL } from '../lib/suffix';
 import { useSettings } from '../store/settings';
 import { BackingTracks } from '../components/BackingTracks';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { addRecord } from '../lib/records';
 
 const PRACTICE_FAMILIES = ['rootlessA', 'rootlessB', 'shell', 'guide', 'drop2', 'spread', 'twoHandRootless', 'quartal', 'upperStructure', 'fourWayClose'];
 
@@ -28,12 +30,15 @@ export default function Tune() {
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [base]);
   const song = useMemo(() => (base ? transposeSong(base, transpose) : null), [base, transpose]);
+  const records = useLiveQuery(() => (base ? db.records.where('songId').equals(base.id).toArray() : Promise.resolve([] as import('../db').RecordRow[])), [base]) ?? [];
+  const [recordId, setRecordId] = useState<string | null>(null);
   const form = useMemo(() => (song ? resolveForm(song) : []), [song]);
   const sections = useMemo(() => (song ? sectionRanges(song) : []), [song]);
   if (!song) return <div className="text-ink-dim">Loading…</div>;
 
   const go = async (mode: TunePracticeOptions['mode']) => {
-    const spec = tuneDrillSpec(base!, { ...opts, mode, transpose, range: view === 'form' ? sel : null });
+    const rec = mode === 'record' ? records.find((r) => r.id === (recordId ?? records[0]?.id)) : undefined;
+    const spec = tuneDrillSpec(base!, { ...opts, mode, transpose, range: view === 'form' ? sel : null, ...(rec ? { recordId: rec.id, anchorSec: rec.anchorSec, bpm: rec.bpm ?? opts.bpm } : {}) });
     await db.drills.put({ id: spec.id, spec, createdAt: Date.now(), updatedAt: Date.now(), custom: false });
     nav(`/drill/${spec.id}`);
   };
@@ -107,10 +112,19 @@ export default function Tune() {
               <span className="ml-3">Choruses</span> <input type="number" className="input w-16" value={opts.passes} min={1} max={20} onChange={(e) => setOpts((o) => ({ ...o, passes: +e.target.value }))} /></div>
           </div>
         </div>
-        <BackingTracks songId={base!.id} title={base!.title} onChoose={(v) => setOpts((o) => ({ ...o, youtube: v?.videoId, ...(v?.bpm ? { bpm: v.bpm } : {}) }))} />
+        <BackingTracks songId={base!.id} title={base!.title} onChoose={(v) => setOpts((o) => ({ ...o, youtube: v?.videoId, anchorSec: v?.verified ? v.anchorSec : undefined, ...(v?.bpm ? { bpm: v.bpm } : {}) }))} />
+        <div className="space-y-2 text-sm">
+          <div className="text-ink-dim">Your recordings <span className="text-ink-faint">(a mix, or stems from Moises/Demucs — piano muted by default)</span></div>
+          <div className="flex flex-wrap items-center gap-2">
+            {records.map((r) => <button key={r.id} className={`rounded-full px-3 py-1 text-xs border ${(recordId ?? records[0]?.id) === r.id ? 'bg-accent text-bg border-accent' : 'border-line text-ink-dim'}`} onClick={() => setRecordId(r.id)}>{r.label}{r.anchorSec !== undefined ? ' ✓' : ''}</button>)}
+            <label className="btn btn-ghost !py-1 cursor-pointer">Add audio<input type="file" accept="audio/*" multiple className="hidden" onChange={(e) => { const fs = [...(e.target.files ?? [])]; if (fs.length) void addRecord(base!.id, base!.title, fs).then((r) => setRecordId(r.id)); }} /></label>
+            {records.length > 0 && <button className="btn btn-danger !py-1" onClick={() => { const id = recordId ?? records[0]!.id; void db.records.delete(id); setRecordId(null); }}>Remove</button>}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-2">
-          <button className="btn btn-primary" onClick={() => void go('changes')}>Play the changes{sel && view === 'form' ? ` (bars ${sel[0] + 1}–${sel[1] + 1})` : ''}</button>
           {opts.youtube && <button className="btn btn-primary" onClick={() => void go('track')}>Play with the track</button>}
+          {records.length > 0 && <button className="btn btn-primary" onClick={() => void go('record')}>Play with the record</button>}
+          <button className={`btn ${opts.youtube || records.length ? 'btn-ghost' : 'btn-primary'}`} onClick={() => void go('changes')}>Play with the band{sel && view === 'form' ? ` (bars ${sel[0] + 1}–${sel[1] + 1})` : ''}</button>
           <button className="btn btn-ghost" onClick={() => void go('iiVs')}>Only the ii-Vs</button>
           <button className="btn btn-ghost" onClick={() => void go('quiz')}>Chord quiz (from memory)</button>
         </div>

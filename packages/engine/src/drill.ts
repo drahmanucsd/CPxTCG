@@ -74,8 +74,9 @@ export interface DrillSpec {
   tags?: string[];
   band?: BandSpec;
   song?: SongRef;
-  /** External backing track: the drill waits for a tap on beat 1, runs with the click muted. */
-  backing?: { kind: 'youtube'; videoId: string; startSec?: number };
+  /** External backing: click muted. YouTube auto-syncs when anchorSec+bpm are known (else tap on beat 1); a record is
+   *  the user's own audio (stems) played on the audio clock, sample-accurate once anchored. */
+  backing?: { kind: 'youtube'; videoId: string; anchorSec?: number; bpm?: number } | { kind: 'record'; recordId: string; anchorSec?: number; bpm?: number };
   /** "Name it & play it": the player must also say the chord name; graded separately. */
   speak?: boolean;
 }
@@ -254,7 +255,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
   get resultsSoFar(): TargetResult[] { return [...this.results.values()].sort((a, b) => a.index - b.index); }
 
   // ---------------------------------------------------------------------
-  start(): void {
+  start(opts: { at?: number } = {}): void {
     if (this.state !== 'idle') return;
     this.startedAt = this.clock.now();
     this.unsubs.push(this.capture.on('attempt', (a) => this.onAttempt(a)));
@@ -269,7 +270,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
       if (this.spec.pacing.subdivision) t.subdivision = this.spec.pacing.subdivision;
       this.unsubs.push(t.on('beat', (b) => this.onBeat(b.index, b.time)));
       this.setState(this.spec.pacing.countInBars > 0 ? 'countIn' : 'running');
-      t.start();
+      t.start(opts.at);
       this.assignBeats();
       this.emitTarget();
     } else {

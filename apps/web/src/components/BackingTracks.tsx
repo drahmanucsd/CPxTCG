@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useSettings } from '../store/settings';
+import { catalogTrack } from '../lib/catalog';
 
 export interface YtResult { videoId: string; title: string; channel: string; thumb: string }
 
 /** Finds backing tracks for a tune on YouTube and remembers the one you pick. */
-export function BackingTracks({ songId, title, onChoose }: { songId: string; title: string; onChoose: (v: { videoId: string; title: string; bpm?: number } | null) => void }) {
+export function BackingTracks({ songId, title, onChoose }: { songId: string; title: string; onChoose: (v: { videoId: string; title: string; bpm?: number; anchorSec?: number; verified?: boolean } | null) => void }) {
   const settings = useSettings();
-  const chosen = settings.backingBySong[songId] ?? null;
+  const curated = catalogTrack(title);
+  const chosen = settings.backingBySong[songId] ?? (curated ? { videoId: curated.videoId, title: curated.title, bpm: curated.bpm, anchorSec: curated.anchorSec, verified: curated.verified } : null);
   const [results, setResults] = useState<YtResult[] | null>(null);
   const [state, setState] = useState<'idle' | 'loading' | 'nokey' | 'error'>('idle');
   const [manual, setManual] = useState('');
@@ -25,10 +27,12 @@ export function BackingTracks({ songId, title, onChoose }: { songId: string; tit
     } catch { setState('error'); }
   };
   useEffect(() => { if (!chosen) void search(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [songId]);
+  // remember a curated pick so the tune page never searches again
+  useEffect(() => { if (curated && !settings.backingBySong[songId]) settings.set({ backingBySong: { ...settings.backingBySong, [songId]: { videoId: curated.videoId, title: curated.title, bpm: curated.bpm, anchorSec: curated.anchorSec, verified: curated.verified, tuneTitle: title } } }); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [songId]);
 
   const pick = (r: { videoId: string; title: string }) => {
     const bpm = /(\d{2,3})\s*bpm/i.exec(r.title)?.[1];
-    const v = { videoId: r.videoId, title: r.title, ...(bpm ? { bpm: +bpm } : {}) };
+    const v = { videoId: r.videoId, title: r.title, tuneTitle: title, ...(bpm ? { bpm: +bpm } : {}) };
     settings.set({ backingBySong: { ...settings.backingBySong, [songId]: v } });
   };
   const clear = () => { const b = { ...settings.backingBySong }; delete b[songId]; settings.set({ backingBySong: b }); setResults(null); void search(); };
@@ -40,7 +44,7 @@ export function BackingTracks({ songId, title, onChoose }: { songId: string; tit
       {chosen ? (
         <div className="flex items-center gap-3">
           <img src={`https://i.ytimg.com/vi/${chosen.videoId}/default.jpg`} alt="" className="w-20 rounded" />
-          <div className="min-w-0 flex-1"><div className="truncate">{chosen.title}</div><div className="text-xs text-ink-faint">{chosen.bpm ? `${chosen.bpm} bpm from the title · ` : ''}used when you press “Play with the track”</div></div>
+          <div className="min-w-0 flex-1"><div className="truncate">{chosen.title}</div><div className="text-xs text-ink-faint">{chosen.verified ? <span className="text-good">verified · syncs automatically</span> : <>{chosen.bpm ? `${chosen.bpm} bpm · ` : ''}first time: tap beat 1 once, it's remembered</>}</div></div>
           <button className="btn btn-ghost !py-1" onClick={clear}>Change</button>
         </div>
       ) : state === 'loading' ? (
