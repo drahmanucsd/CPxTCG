@@ -1,5 +1,9 @@
 # 04 — Build plan
 
+> **Status (2026-09-20):** Phases 0–6 have a first implementation on this branch. Per phase: ✅ done as specified · ◐ partial · ☐ not started.
+> Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · Phase 3 ✅ (MusicXML import ☐, block-chord passing-dim rule ☐) · Phase 4 ◐ (YouTube tap-sync ✅, uploaded audio ☐, SRS scheduler ☐ — the weak-spot map drives Today instead, MIDI replay ✅) · Phase 5 ◐ (mic level 1 ✅, Basic Pitch ☐, speech ✅, ear modes ☐) · Phase 6 ◐ (local OCR via Tesseract ✅, bar-box editing ☐ — chart text is edited instead, melody OMR ☐) · Phase 7 ☐.
+> Decisions taken: name **Shed**, Vercel, **local OCR** (Tesseract in the browser, no key), YouTube paste-URL now + search function stubbed in `api/yt-search.ts` for when a key exists, chord display is a setting (Real Book default).
+
 Ordered so every phase ends with something you'd actually practice with. Each phase lists the
 **definition of done** — the thing you can do at the piano when it's finished — and the tests
 that gate it. Estimates are for AI-assisted building in this repo; "session" ≈ one focused
@@ -131,7 +135,7 @@ theme), i18n of chord display conventions.
 
 1. **Name** — working title *Shed*. Fine to change.
 2. **Hosting** — Vercel (functions + static, simplest) vs Cloudflare Pages/Workers. Default: Vercel.
-3. **OCR model** — Claude via the Anthropic API from the function (needs a key in the deploy env).
+3. **OCR model** — decided: local (Tesseract.js in the browser). A vision-model provider can be added behind the same `OcrWord[]` interface later.
 4. **YouTube search** — Data API key (quota ~100 searches/day free) or paste-URL only for v1.
    Default: paste-URL in Phase 4, add search when there's a key.
 5. **Chord display default** — `Δ / - / ø` (Real Book style) vs `maj7 / m7 / m7b5`. Default: Real

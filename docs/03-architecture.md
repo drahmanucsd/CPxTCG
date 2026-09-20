@@ -53,8 +53,9 @@ Alternatives considered and why not now:
   note model, MIT/Apache, runs in ONNX Runtime Web).
 - **Speech**: Web Speech API (`SpeechRecognition`, continuous, interim results) + a domain
   post-processor; `speechSynthesis` for prompts.
-- **Vision/OCR**: Claude with structured output (JSON schema) for chord-chart extraction from
-  page images. Audiveris (server, Java) as an optional later path for melody OMR.
+- **OCR**: **local** — Tesseract.js in the browser (model cached after first download), pdf.js for
+  PDF pages; layout logic (words → systems → bars) is pure and tested in `theory/scan.ts`. A vision
+  model can be plugged in behind the same `OcrWord[]` interface. Audiveris later for melody OMR.
 - **Testing**: Vitest (theory/engine), Playwright (web) with injected MIDI/mic events.
 - **Deploy**: static hosting + serverless functions; no database until sync (T4, Supabase).
 
