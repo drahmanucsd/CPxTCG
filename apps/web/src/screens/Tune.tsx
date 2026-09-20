@@ -7,6 +7,7 @@ import { db } from '../db';
 import { loadSong, tuneDrillSpec, type TunePracticeOptions } from '../lib/songs';
 import { FAMILY_LABEL } from '../lib/suffix';
 import { useSettings } from '../store/settings';
+import { BackingTracks } from '../components/BackingTracks';
 
 const PRACTICE_FAMILIES = ['rootlessA', 'rootlessB', 'shell', 'guide', 'drop2', 'spread', 'twoHandRootless', 'quartal', 'upperStructure', 'fourWayClose'];
 
@@ -102,13 +103,14 @@ export default function Tune() {
             <div className="text-ink-dim">Band</div>
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.bass} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), bass: e.target.checked } }))} /> Bass</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.drums} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), drums: e.target.checked } }))} /> Drums</label>
-            <div className="flex items-center gap-2">YouTube <input className="input flex-1" placeholder="paste a backing-track URL (mutes the band)" value={opts.youtube ?? ''} onChange={(e) => setOpts((o) => ({ ...o, youtube: e.target.value }))} /></div>
             <div className="flex items-center gap-2">Tempo <input type="number" className="input w-24" value={opts.bpm} min={30} max={300} onChange={(e) => setOpts((o) => ({ ...o, bpm: +e.target.value }))} /> bpm
               <span className="ml-3">Choruses</span> <input type="number" className="input w-16" value={opts.passes} min={1} max={20} onChange={(e) => setOpts((o) => ({ ...o, passes: +e.target.value }))} /></div>
           </div>
         </div>
+        <BackingTracks songId={base!.id} title={base!.title} onChoose={(v) => setOpts((o) => ({ ...o, youtube: v?.videoId, ...(v?.bpm ? { bpm: v.bpm } : {}) }))} />
         <div className="flex flex-wrap gap-2">
           <button className="btn btn-primary" onClick={() => void go('changes')}>Play the changes{sel && view === 'form' ? ` (bars ${sel[0] + 1}–${sel[1] + 1})` : ''}</button>
+          {opts.youtube && <button className="btn btn-primary" onClick={() => void go('track')}>Play with the track</button>}
           <button className="btn btn-ghost" onClick={() => void go('iiVs')}>Only the ii-Vs</button>
           <button className="btn btn-ghost" onClick={() => void go('quiz')}>Chord quiz (from memory)</button>
         </div>

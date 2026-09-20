@@ -84,7 +84,8 @@ because a pianist will ask for them within a week.
   chromatic approach logic), ride/hi-hat/brushes patterns for swing / bossa / ballad / straight-8
   / waltz / latin, optional piano comping ghost track. This is the *reliable* backing track —
   tempo-flexible, loopable, always in sync. YouTube is a bonus on top.
-- **YouTube backing track** (T2): paste URL or search (`"<tune> backing track"`), embedded
+- **YouTube backing track** (T2): the app searches `"<tune> backing track"` and shows the results
+  on the tune page; you pick one once and it's remembered (a pasted link is the fallback). Embedded
   player, **tap-to-sync** (tap beat 1 of the form; enter/tap tempo), the app runs a bar clock
   from that anchor and shows the changes in time; re-anchor button for drift; loop a section via
   seek; playback-rate control (0.5×–1.5× via the player). Per-tune saved sync so it's set up once.
@@ -147,12 +148,11 @@ because a pianist will ask for them within a week.
 - Every attempt stored: target (chord, family, inversion, key, strictness), played notes,
   correct/miss, diagnosis, lateness, hints used, tempo, source drill/tune, timestamp.
 - **Weak-spot map**: keys × families × qualities, aggregated with recency weighting.
-- **Spaced repetition** ★ over (chord, family) items: a simple SM-2-style scheduler with tempo
-  as an extra dimension ("known at 100, not at 160").
-- **Practice plan generator** (T2): builds *Today* from: due reviews, worst 3 cells, current tune,
-  a free-play block; respects a target duration.
-- Streaks, minutes, per-tune clean-at-tempo %, per-block latency trend, export/import JSON,
-  optional cloud sync (T4).
+- **Practice plan generator** (T2): builds *Today* from the worst cells, a core drill and a
+  stretch block; respects a target duration. Deliberately simple — no scheduling algorithm.
+- Streaks, minutes, per-tune clean-at-tempo %, per-block latency trend, export/import JSON.
+- Everything lives in the browser (IndexedDB + localStorage). No accounts, no sync, no server
+  state: export JSON if you change machines.
 - **MIDI recording of the session** ★ (T2): what you actually played, replayable against the
   targets — "hear your mistakes".
 
@@ -173,10 +173,10 @@ because a pianist will ask for them within a week.
 - **Warm-up generator**: 3 minutes of the family you drilled least this week.
 - **Practice journal** per tune ("bridge still rough") and per session.
 - **Shareable drills / progressions** as URLs and QR codes (teacher → student).
-- **Teacher mode** (T4): a teacher assigns drills, sees the student's heatmap.
 
 ## I. Explicitly out of scope (for now)
 
-- Full notation editing, audio-to-MIDI transcription of recordings, downloading YouTube audio
-  (against ToS — we embed), shipping copyrighted lead sheets, native mobile apps (a PWA and, if
-  needed later, a Capacitor wrapper).
+- Accounts and cloud sync (progress is local; JSON export is the backup), spaced-repetition
+  scheduling, teacher mode, full notation editing, audio-to-MIDI transcription of recordings,
+  downloading YouTube audio (against ToS — we embed), shipping copyrighted lead sheets, native
+  mobile apps (a PWA and, if needed later, a Capacitor wrapper).

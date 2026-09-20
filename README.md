@@ -18,11 +18,11 @@ Status: **phases 0–6 built, unpolished** — see *What works today* below. Rea
 
 - **Drills** (`/drills`): 18 presets + an editor. Random / ii-V-I in any key order / cycles / turnarounds / blues / custom text. 20 voicing families, voice leading on or off, five-level strictness, free or timed pacing with count-in, speed ladder, look-ahead, hint ladder, reference playback, keyboard diff on misses, hands-free keys and sustain-pedal double-tap.
 - **Input**: Web MIDI (Chrome/Edge/Firefox), computer keyboard, **microphone** (acoustic piano, graded at pitch-class level), **voice** ("name it & play it", commands).
-- **Tunes** (`/tunes`): 20 public-domain standards, **iReal Pro import** (links, playlists, exported HTML), chart text, **scan a page** (local OCR → bars → editable chart → practice on your own photo with a moving cursor). Chart / flat form / guide-tone views, section loops, transposition, synthesized **rhythm section** (bass + drums in styles), **YouTube backing track** with tap-sync.
-- **Memory**: every attempt stored locally (IndexedDB); heatmap by voicing / chord type, weak spots feed the **Today** plan and smart-random drills; session review with "drill these", MIDI replay; streak; JSON export.
+- **Tunes** (`/tunes`): 20 public-domain standards, **iReal Pro import** (links, playlists, exported HTML), chart text, **scan a page** (local OCR → bars → editable chart → practice on your own photo with a moving cursor). Chart / flat form / guide-tone views, section loops, transposition, synthesized **rhythm section** (bass + drums in styles), and **backing tracks found for you**: the tune page searches YouTube (`"<title>" backing track`), you pick one once, and “Play with the track” tap-syncs the changes to it.
+- **Progress**: kept in the browser (IndexedDB, no accounts, no server). Heatmap by voicing / chord type, weak spots feed the **Today** plan and smart-random drills; session review with "drill these", MIDI replay; streak; JSON export/import as the backup.
 - Tests: 256 unit (theory + engine), 6 Playwright e2e. `pnpm install && pnpm test && pnpm --filter @shed/web dev`.
 
-Not yet: cloud sync, Basic-Pitch (note-level mic), melody OMR, YouTube search (needs a key — see `.env.example`), comping-rhythm trainer, teacher mode. Details and order in [`docs/04-build-plan.md`](docs/04-build-plan.md).
+YouTube search needs `YOUTUBE_API_KEY` on the server (see `.env.example`); without it the tune page links to the YouTube search and takes a pasted link. Not yet: Basic-Pitch (note-level mic), melody OMR, comping-rhythm trainer. Details and order in [`docs/04-build-plan.md`](docs/04-build-plan.md).
 
 ## One-paragraph version
 

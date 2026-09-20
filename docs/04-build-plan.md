@@ -1,8 +1,8 @@
 # 04 — Build plan
 
 > **Status (2026-09-20):** Phases 0–6 have a first implementation on this branch. Per phase: ✅ done as specified · ◐ partial · ☐ not started.
-> Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · Phase 3 ✅ (MusicXML import ☐, block-chord passing-dim rule ☐) · Phase 4 ◐ (YouTube tap-sync ✅, uploaded audio ☐, SRS scheduler ☐ — the weak-spot map drives Today instead, MIDI replay ✅) · Phase 5 ◐ (mic level 1 ✅, Basic Pitch ☐, speech ✅, ear modes ☐) · Phase 6 ◐ (local OCR via Tesseract ✅, bar-box editing ☐ — chart text is edited instead, melody OMR ☐) · Phase 7 ☐.
-> Decisions taken: name **Shed**, Vercel, **local OCR** (Tesseract in the browser, no key), YouTube paste-URL now + search function stubbed in `api/yt-search.ts` for when a key exists, chord display is a setting (Real Book default).
+> Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · Phase 3 ✅ (MusicXML import ☐, block-chord passing-dim rule ☐) · Phase 4 ◐ (YouTube find-and-sync ✅ — search needs the key, uploaded audio ☐, MIDI replay ✅) · Phase 5 ◐ (mic level 1 ✅, Basic Pitch ☐, speech ✅, ear modes ☐) · Phase 6 ◐ (local OCR via Tesseract ✅, bar-box editing ☐ — chart text is edited instead, melody OMR ☐) · Phase 7 ☐.
+> Decisions taken: name **Shed**, Vercel, **local OCR** (Tesseract in the browser, no key), YouTube search is the primary path (`api/yt-search.ts`, needs `YOUTUBE_API_KEY`; paste-URL fallback), chord display is a setting (Real Book default), **no cloud sync / accounts / spaced-repetition scheduler** — progress is local and simple.
 
 Ordered so every phase ends with something you'd actually practice with. Each phase lists the
 **definition of done** — the thing you can do at the piano when it's finished — and the tests
@@ -76,12 +76,12 @@ working block.
 
 ## Phase 4 — Backing tracks + practice plans (2 sessions)
 
-1. YouTube: embed, URL paste, search via `functions/yt-search`, tap-to-sync object per
-   song/video, bar clock, nudge/re-anchor, section loop by seek, playback rate. Saved syncs.
+1. YouTube: the tune page finds tracks via `api/yt-search` and remembers the pick; embed,
+   tap-to-sync, bar clock, nudge/re-anchor, section loop by seek, playback rate.
 2. Uploaded audio with the same sync (Web Audio `AudioBufferSourceNode`, so loops are
    sample-accurate here).
-3. Spaced-repetition state over (chord, family, tempo tier); the *Today* generator; time-boxed
-   session runner chaining blocks; streaks.
+3. The *Today* generator from weak spots (no scheduler); time-boxed session runner chaining
+   blocks; streaks.
 4. MIDI session recording + replay against targets.
 - **Done when**: *Today* opens with a plan, runs end-to-end hands-free, and the last block plays a
   YouTube track with the changes rolling in sync.
@@ -113,8 +113,7 @@ working block.
 ## Phase 7 — Polish and backlog (ongoing)
 
 Chord-scale display, comping rhythm trainer, bass-line practice, reharm drills, set lists,
-practice journal, shareable drill URLs, teacher mode, cloud sync, Capacitor iPad build, small-
-hands voicing filter, accessibility pass (screen reader for the non-drill screens, high-contrast
+practice journal, shareable drill URLs, Capacitor iPad build, small-hands voicing filter, accessibility pass (screen reader for the non-drill screens, high-contrast
 theme), i18n of chord display conventions.
 
 ## Risks and how the plan handles them
@@ -136,8 +135,7 @@ theme), i18n of chord display conventions.
 1. **Name** — working title *Shed*. Fine to change.
 2. **Hosting** — Vercel (functions + static, simplest) vs Cloudflare Pages/Workers. Default: Vercel.
 3. **OCR model** — decided: local (Tesseract.js in the browser). A vision-model provider can be added behind the same `OcrWord[]` interface later.
-4. **YouTube search** — Data API key (quota ~100 searches/day free) or paste-URL only for v1.
-   Default: paste-URL in Phase 4, add search when there's a key.
+4. **YouTube search** — Data API key (10,000 units/day free ≈ 100 searches). Built; key pending.
 5. **Chord display default** — `Δ / - / ø` (Real Book style) vs `maj7 / m7 / m7b5`. Default: Real
    Book style, switchable.
 6. **Which of the three personas is *you*** — this changes which shipped presets and which Phase 2

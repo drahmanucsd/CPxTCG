@@ -14,7 +14,7 @@ export async function saveSong(song: Song): Promise<void> {
 }
 
 export interface TunePracticeOptions {
-  mode: 'changes' | 'quiz' | 'iiVs';
+  mode: 'changes' | 'quiz' | 'iiVs' | 'track';
   families: string[];
   voiceLeading: 'strict' | 'off';
   band: BandSpec | null;
@@ -82,7 +82,7 @@ export function tuneDrillSpec(base: Song, o: TunePracticeOptions): DrillSpec {
     song: songRef(song, form, from, to),
   };
   if (o.band && timed) spec.band = { ...o.band, style: song.style };
-  const vid = o.youtube ? youtubeId(o.youtube) : null;
+  const vid = o.mode === 'track' && o.youtube ? youtubeId(o.youtube) : null;
   if (vid && timed) { spec.backing = { kind: 'youtube', videoId: vid }; spec.pacing.countInBars = 0; spec.band = undefined; spec.name = `${song.title} — with backing track`; }
   return spec;
 }

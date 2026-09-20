@@ -13,6 +13,8 @@ export interface Settings {
   speakPrompts: boolean;
   level: 'learning' | 'tunes' | 'fluency';
   onboarded: boolean;
+  /** chosen YouTube backing track per tune id */
+  backingBySong: Record<string, { videoId: string; title: string; bpm?: number }>;
   set: (patch: Partial<Settings>) => void;
 }
 
@@ -20,7 +22,7 @@ export const useSettings = create<Settings>()(
   persist(
     (set) => ({
       displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
-      visualPulse: true, speakPrompts: false, level: 'fluency', onboarded: false,
+      visualPulse: true, speakPrompts: false, level: 'fluency', onboarded: false, backingBySong: {},
       set: (patch) => set(patch),
     }),
     { name: 'shed.settings', partialize: (s) => Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v !== 'function')) as Partial<Settings> },

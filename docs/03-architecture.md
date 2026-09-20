@@ -57,7 +57,7 @@ Alternatives considered and why not now:
   PDF pages; layout logic (words → systems → bars) is pure and tested in `theory/scan.ts`. A vision
   model can be plugged in behind the same `OcrWord[]` interface. Audiveris later for melody OMR.
 - **Testing**: Vitest (theory/engine), Playwright (web) with injected MIDI/mic events.
-- **Deploy**: static hosting + serverless functions; no database until sync (T4, Supabase).
+- **Deploy**: static hosting + one serverless function (YouTube search). No database.
 
 ## Data model (TypeScript, abbreviated)
 
@@ -175,9 +175,12 @@ mode the spoken chord and the played chord are graded independently and both sho
 gated behind push-to-talk *or* always-on with the mic already open for pitch (one stream, two
 consumers).
 
-### 7. YouTube sync
+### 7. YouTube backing tracks
 
-Embed via IFrame API. Sync object per (song, videoId): `{ anchorVideoTime, bpm, beatsPerBar,
+Finding: the tune page calls `api/yt-search` (YouTube Data API, key on the server) with
+`"<title>" backing track`, shows thumbnails, and remembers the pick per tune; a bpm in the video
+title pre-fills the tempo. Without a key it links to the YouTube search and accepts a pasted link.
+Playing: embed via IFrame API. Sync object per (song, videoId): `{ anchorVideoTime, bpm, beatsPerBar,
 formStartBar, playbackRate }`. The app's bar clock = `(player.getCurrentTime() − anchor) ×
 bpm/60 / beatsPerBar`, polled at 60 Hz via `rAF` (getCurrentTime is cheap). UX: press play,
 tap on beat 1 of the form → anchor; tap-tempo 8 beats (or type bpm from the video title); a
@@ -201,10 +204,10 @@ rhythm section is the primary pacer and YouTube is the "play with the record" bo
 
 ### 9. Persistence & sync
 
-Dexie tables: `songs`, `drills`, `attempts`, `sessions`, `images`, `syncs`, `settings`. Attempts
-are append-only; aggregates (heatmap, SRS state) are recomputed incrementally and cached. Export
-= one JSON (+ images as a zip). Cloud sync (T4) mirrors the same tables to Supabase with
-last-write-wins per row; no server logic.
+Local only. Dexie (IndexedDB) tables: `songs`, `drills`, `attempts`, `sessions`, `images`;
+settings and per-tune choices (backing track, transposition) in localStorage. Attempts are
+append-only; the heatmap and weak spots are computed from the last 30–60 days on read. Export =
+one JSON. No accounts, no sync — it isn't worth the complexity for a single-player practice tool.
 
 ## Security / privacy notes
 
@@ -212,4 +215,4 @@ last-write-wins per row; no server logic.
   session MIDI recording (MIDI only, never audio).
 - Scan extraction sends the page image to the OCR function once; the function does not store it.
 - YouTube: embed only; no downloading; Data API key lives in the function, with quota guarding.
-- No accounts in v1; export/import JSON is the backup story.
+- No accounts; export/import JSON is the backup story.
