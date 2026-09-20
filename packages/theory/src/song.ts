@@ -43,6 +43,8 @@ export interface Song {
   tags?: string[];
   /** original text (iReal URL, chart text) for re-import */
   raw?: string;
+  /** scanned page: image id (app storage) and a box per written bar, normalized 0..1 */
+  scan?: { imageId: string; boxes: Array<{ x: number; y: number; w: number; h: number } | null> };
 }
 
 /** One bar of the resolved (playable) form. */

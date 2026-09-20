@@ -7,6 +7,7 @@ import Progress from './screens/Progress';
 import Devices from './screens/Devices';
 import Tunes from './screens/Tunes';
 import Tune from './screens/Tune';
+import Scan from './screens/Scan';
 import { useMidiStatus } from './midi/midiService';
 
 function Nav() {
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/devices" element={<Devices />} />
           <Route path="/tunes" element={<Tunes />} />
           <Route path="/tunes/:id" element={<Tune />} />
+          <Route path="/scan" element={<Scan />} />
         </Routes>
       </main>
     </div>

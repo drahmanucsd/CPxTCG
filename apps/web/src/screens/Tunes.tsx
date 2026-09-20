@@ -34,6 +34,7 @@ export default function Tunes() {
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Tunes</h1>
         <input className="input ml-auto w-56" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} />
+        <Link to="/scan" className="btn btn-ghost">Scan a page</Link>
         <button className="btn btn-primary" onClick={() => setImporting((v) => !v)}>Import</button>
       </div>
       {importing && (

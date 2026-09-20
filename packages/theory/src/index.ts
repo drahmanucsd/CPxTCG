@@ -10,3 +10,4 @@ export * from './chartText.js';
 export * from './ireal.js';
 export * from './library.js';
 export * from './spoken.js';
+export * from './scan.js';

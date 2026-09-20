@@ -50,6 +50,8 @@ export interface SongRef {
   /** first form bar index of the practiced range */
   from: number;
   to: number;
+  /** scanned page image + per written-bar boxes (normalized) for the page-cursor view */
+  scan?: { imageId: string; boxes: Array<{ x: number; y: number; w: number; h: number } | null> };
 }
 
 export interface DrillSpec {

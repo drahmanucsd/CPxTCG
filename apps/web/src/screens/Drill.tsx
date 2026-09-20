@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { DrillRunner, PRESET_BY_ID, RhythmSection, SpeechInput, speechSupported, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
 import { STRICTNESS_LABEL, STRICTNESS_ORDER, chordTones, keyName, spellPc, type PitchClass, type Verdict } from '@shed/theory';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
-import { getCapture, onMidiCC, startMidi, useComputerKeyboardPiano, useMidiStore } from '../midi/midiService';
+import { getCapture, onMidiCC, onMidiNote, startMidi, useComputerKeyboardPiano, useMidiStore } from '../midi/midiService';
 import { useSettings } from '../store/settings';
 import { db } from '../db';
 import { ChordText } from '../components/ChordDisplay';
@@ -11,6 +11,7 @@ import { Keyboard } from '../components/Keyboard';
 import { BeatPulse } from '../components/BeatPulse';
 import { ChordGrid } from '../components/ChordGrid';
 import { YouTube, type YTPlayer } from '../components/YouTube';
+import { PageImage } from './Tune';
 import { recentAttempts, smartWeight } from '../lib/stats';
 import { FAMILY_LABEL, suffixOf } from '../lib/suffix';
 import { speak, spokenChord } from '../lib/speech';
@@ -50,8 +51,16 @@ export default function Drill() {
   const ytRef = useRef<YTPlayer | null>(null);
   const runnerRef = useRef<DrillRunner | null>(null);
   const bandRef = useRef<RhythmSection | null>(null);
+  const recRef = useRef<{ t0: number; events: Array<[number, number, number, number]>; off: () => void } | null>(null);
   const speechRef = useRef<SpeechInput | null>(null);
   const [heard, setHeard] = useState<{ text: string; ok: boolean | null } | null>(null);
+  const [pageUrl, setPageUrl] = useState<string | null>(null);
+  const [showPage, setShowPage] = useState(true);
+  useEffect(() => {
+    let url: string | null = null;
+    if (spec?.song?.scan) void db.images.get(spec.song.scan.imageId).then((row) => { if (row) { url = URL.createObjectURL(row.blob); setPageUrl(url); } });
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [spec]);
   const flashKey = useRef(0);
   useComputerKeyboardPiano(ready, 3);
 
@@ -80,6 +89,11 @@ export default function Drill() {
     const effective: DrillSpec = micMode && STRICTNESS_ORDER.indexOf(spec.strictness) < STRICTNESS_ORDER.indexOf('octaveFree') ? { ...spec, strictness: 'octaveFree' } : spec;
     const runner = new DrillRunner({ spec: effective, clock, capture, transport, weight, latencyOffsetMs: micMode ? settings.latencyOffsetMs + 60 : settings.latencyOffsetMs });
     runnerRef.current = runner;
+    // record what is actually played (MIDI only, never audio) so the review can replay it
+    recRef.current?.off();
+    const rec = { t0: clock.now(), events: [] as Array<[number, number, number, number]>, off: () => {} };
+    rec.off = onMidiNote((e) => { if (rec.events.length < 20000) rec.events.push([e.type === 'on' ? 1 : 0, e.note, Math.round((e.time - rec.t0) * 1000) / 1000, e.velocity]); });
+    recRef.current = rec;
     if (spec.band && spec.pacing.mode === 'timed') {
       bandRef.current?.stop();
       bandRef.current = new RhythmSection(ctx, transport, (b) => runner.chordAtBeat(b), spec.band);
@@ -168,7 +182,8 @@ export default function Drill() {
   const saveAndReview = async (s: DrillSpec, summary: DrillSummary) => {
     const sessionId = crypto.randomUUID();
     const ts = Date.now();
-    await db.sessions.put({ id: sessionId, specId: s.id, specName: s.name, startedAt: ts - Math.round((summary.endedAt - summary.startedAt) * 1000), endedAt: ts, total: summary.total, correct: summary.correct, avgLatenessMs: summary.avgLatenessMs, finalBpm: summary.finalBpm, hintsUsed: summary.hintsUsed, summary });
+    const rec = recRef.current; rec?.off(); recRef.current = null;
+    await db.sessions.put({ id: sessionId, specId: s.id, specName: s.name, startedAt: ts - Math.round((summary.endedAt - summary.startedAt) * 1000), endedAt: ts, total: summary.total, correct: summary.correct, avgLatenessMs: summary.avgLatenessMs, finalBpm: summary.finalBpm, hintsUsed: summary.hintsUsed, summary, midi: rec?.events ?? [] });
     await db.attempts.bulkAdd(summary.results.map((r) => ({ ...r, sessionId, specId: s.id, ts, root: r.chord.root, suffix: suffixOf(r.chord) })));
     nav(`/review/${sessionId}`, { replace: true });
   };
@@ -203,7 +218,7 @@ export default function Drill() {
     return () => { window.removeEventListener('keydown', kd); offCC(); };
   }, [ready, spec, goOnOne, tapTempo]);
 
-  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); speechRef.current?.stop(); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
+  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); speechRef.current?.stop(); recRef.current?.off(); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
 
   const run = runnerRef.current;
   const t = view.target;
@@ -308,8 +323,11 @@ export default function Drill() {
           </div>
         )}
         {tuneMode && (
-          <div className="w-full max-w-5xl max-h-[38vh] overflow-y-auto px-2">
-            <ChordGrid bars={gridBars} compact cursor={t?.pc.formIndex} results={view.barResults} />
+          <div className="w-full max-w-5xl max-h-[42vh] overflow-y-auto px-2">
+            {spec.song?.scan && pageUrl && showPage
+              ? <PageImage url={pageUrl} boxes={spec.song.scan.boxes} cursor={t?.pc.barIndex} />
+              : <ChordGrid bars={gridBars} compact cursor={t?.pc.formIndex} results={view.barResults} />}
+            {spec.song?.scan && pageUrl && <button className="text-xs text-ink-faint hover:text-ink mt-1" onClick={() => setShowPage((v) => !v)}>{showPage ? 'show grid' : 'show page'}</button>}
           </div>
         )}
         <div className={`w-full ${tuneMode ? 'max-w-xl' : 'max-w-3xl'} transition-opacity`} style={{ opacity: showDiff || hintNotes.length || midi.held.length ? 1 : tuneMode ? 0 : 0.25, display: tuneMode && !(showDiff || hintNotes.length) ? 'none' : undefined }}>

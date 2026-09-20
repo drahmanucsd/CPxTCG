@@ -8,7 +8,7 @@ import { Keyboard } from '../components/Keyboard';
 import { FAMILY_LABEL } from '../lib/suffix';
 import { useSettings } from '../store/settings';
 import { useState } from 'react';
-import { playVoicing } from '../audio/context';
+import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 
 export default function Review() {
   const { sessionId } = useParams();
@@ -16,6 +16,7 @@ export default function Review() {
   const settings = useSettings();
   const session = useLiveQuery(() => db.sessions.get(sessionId ?? ''), [sessionId]);
   const [open, setOpen] = useState<number | null>(null);
+  const [replaying, setReplaying] = useState(false);
   if (!session) return <div className="text-ink-dim">Loading…</div>;
   const s = session.summary;
   const misses = s.results.filter((r) => !r.ok);
@@ -24,6 +25,22 @@ export default function Review() {
   const acc = s.total ? Math.round((100 * s.correct) / s.total) : 0;
   const plan = readPlan();
   const nextBlock = plan && plan.ids[plan.index] === session.specId && plan.index + 1 < plan.ids.length ? { id: plan.ids[plan.index + 1]!, title: plan.titles[plan.index + 1]! } : null;
+  const replay = async () => {
+    const ev = session.midi ?? [];
+    if (!ev.length) return;
+    await unlockAudio();
+    const { ctx, piano } = getAudio();
+    const t0 = ctx.currentTime + 0.1;
+    const ons = new Map<number, number>();
+    for (const [type, note, t, vel] of ev) {
+      if (type === 1) ons.set(note, t);
+      else { const on = ons.get(note); if (on !== undefined) { piano.play(note, t0 + on, Math.max(0.15, t - on), vel / 127); ons.delete(note); } }
+    }
+    for (const [note, on] of ons) piano.play(note, t0 + on, 0.6, 0.7);
+    setReplaying(true);
+    const last = ev[ev.length - 1]![2];
+    setTimeout(() => setReplaying(false), (last + 1) * 1000);
+  };
   const goNext = () => { if (!plan || !nextBlock) return; sessionStorage.setItem('shed.plan', JSON.stringify({ ...plan, index: plan.index + 1 })); nav(`/drill/${nextBlock.id}`); };
 
   const drillThese = async () => {
@@ -96,6 +113,7 @@ export default function Review() {
         {nextBlock && <button className="btn btn-primary" onClick={goNext}>Next block: {nextBlock.title} →</button>}
         <Link to={`/drill/${session.specId}`} className={`btn ${nextBlock ? 'btn-ghost' : 'btn-primary'}`}>Again</Link>
         <Link to="/" className="btn btn-ghost">Done</Link>
+        {session.midi && session.midi.length > 0 && <button className="btn btn-ghost" onClick={() => void replay()} disabled={replaying}>{replaying ? 'Replaying…' : 'Replay what I played'}</button>}
       </div>
     </div>
   );

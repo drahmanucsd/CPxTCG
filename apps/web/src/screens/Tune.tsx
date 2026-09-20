@@ -16,10 +16,16 @@ export default function Tune() {
   const settings = useSettings();
   const [base, setBase] = useState<Song | null>(null);
   const [transpose, setTranspose] = useState(0);
-  const [view, setView] = useState<'written' | 'form' | 'guide'>('written');
+  const [view, setView] = useState<'written' | 'form' | 'guide' | 'page'>('written');
+  const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [sel, setSel] = useState<[number, number] | null>(null);
   const [opts, setOpts] = useState<Omit<TunePracticeOptions, 'mode' | 'transpose' | 'range'>>({ families: ['rootlessA', 'rootlessB'], voiceLeading: 'off', band: { style: 'swing', bass: true, drums: true }, bpm: 120, passes: 2, halfTime: false });
-  useEffect(() => { void loadSong(decodeURIComponent(id ?? '')).then((s) => { setBase(s); if (s?.tempo) setOpts((o) => ({ ...o, bpm: s.tempo! })); }); }, [id]);
+  useEffect(() => { void loadSong(decodeURIComponent(id ?? '')).then((s) => { setBase(s); if (s?.tempo) setOpts((o) => ({ ...o, bpm: s.tempo! })); if (s?.scan) setView('page'); }); }, [id]);
+  useEffect(() => {
+    let url: string | null = null;
+    if (base?.scan) void db.images.get(base.scan.imageId).then((row) => { if (row) { url = URL.createObjectURL(row.blob); setImgUrl(url); } });
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [base]);
   const song = useMemo(() => (base ? transposeSong(base, transpose) : null), [base, transpose]);
   const form = useMemo(() => (song ? resolveForm(song) : []), [song]);
   const sections = useMemo(() => (song ? sectionRanges(song) : []), [song]);
@@ -65,8 +71,8 @@ export default function Tune() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        {(['written', 'form', 'guide'] as const).map((v) => (
-          <button key={v} className={`rounded-full px-3 py-1 ${view === v ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setView(v)}>{v === 'written' ? 'Chart' : v === 'form' ? `Flat form (${form.length} bars)` : 'Guide tones'}</button>
+        {([...(song.scan ? ['page'] : []), 'written', 'form', 'guide'] as const).map((v) => (
+          <button key={v} className={`rounded-full px-3 py-1 ${view === v ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setView(v as typeof view)}>{v === 'page' ? 'Page' : v === 'written' ? 'Chart' : v === 'form' ? `Flat form (${form.length} bars)` : 'Guide tones'}</button>
         ))}
         {sections.length > 0 && <span className="ml-3 text-ink-faint">Loop:</span>}
         {sections.map((s) => <button key={s.label + s.from} className="rounded-full px-3 py-1 bg-panel-2 text-ink-dim hover:text-ink" onClick={() => selectSection(s.label)}>{s.label}</button>)}
@@ -75,6 +81,7 @@ export default function Tune() {
       </div>
 
       <div className="card overflow-x-auto">
+        {view === 'page' && song.scan && (imgUrl ? <PageImage url={imgUrl} boxes={song.scan.boxes} /> : <div className="text-ink-dim text-sm">Loading page…</div>)}
         {view === 'written' && <ChordGrid bars={writtenBars(song.bars)} />}
         {view === 'form' && <ChordGrid bars={formBars(form)} selection={sel} onBarClick={onBarClick} />}
         {view === 'guide' && <GuideTones song={song} />}
@@ -159,3 +166,17 @@ function GuideTones({ song }: { song: Song }) {
 }
 
 function noteName(n: number): string { return ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'][n % 12]! + (Math.floor(n / 12) - 1); }
+
+/** The scanned page with the detected bar boxes, for reference. */
+export function PageImage({ url, boxes, cursor }: { url: string; boxes: Array<{ x: number; y: number; w: number; h: number } | null>; cursor?: number }) {
+  return (
+    <div className="relative w-full">
+      <img src={url} alt="scanned page" className="w-full block rounded-lg" />
+      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1 1" preserveAspectRatio="none">
+        {boxes.map((b, i) => b && (
+          <rect key={i} x={b.x} y={b.y} width={b.w} height={b.h} fill={cursor === i ? 'rgba(232,179,74,0.28)' : 'none'} stroke={cursor === i ? '#e8b34a' : 'rgba(232,179,74,0.25)'} strokeWidth={cursor === i ? 0.004 : 0.0015} vectorEffect="non-scaling-stroke" />
+        ))}
+      </svg>
+    </div>
+  );
+}

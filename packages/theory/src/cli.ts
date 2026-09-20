@@ -18,9 +18,9 @@ if (cmd === 'voicings') {
     if (vs.length > 12) console.log(`    … ${vs.length - 12} more`);
   }
 } else if (cmd === 'lead') {
-  const family = args[0] ?? 'rootlessA';
+  const families = (args[0] ?? 'rootlessA,rootlessB').split(',');
   const chords = (args[1] ?? 'Dm7 G7 Cmaj7').split(/\s+/).map(parseChord);
-  const led = leadProgression(chords, { families: [family] });
+  const led = leadProgression(chords, { families });
   led.forEach((v, i) => console.log(`${formatChord(chords[i]!).padEnd(8)} ${v ? v.label.padEnd(16) + names(v.notes) : '—'}`));
 } else if (cmd === 'id') {
   const notes = args.map((a) => parseMidiName(a) ?? Number(a));

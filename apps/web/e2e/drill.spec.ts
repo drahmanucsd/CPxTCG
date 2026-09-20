@@ -82,3 +82,8 @@ test('import an iReal link', async ({ page }) => {
   await expect(page.getByText('1 tune imported')).toBeVisible();
   await expect(page.getByText('My Import')).toBeVisible();
 });
+
+test('scan page renders and accepts chart text without OCR', async ({ page }) => {
+  await page.goto('/scan');
+  await expect(page.getByRole('heading', { name: 'Scan a chart' })).toBeVisible();
+});

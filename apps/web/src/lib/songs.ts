@@ -29,10 +29,12 @@ export interface TunePracticeOptions {
 }
 
 function songRef(song: Song, form: FormBar[], from: number, to: number): SongRef {
-  return {
+  const ref: SongRef = {
     songId: song.id, title: song.title, from, to,
     bars: form.map((b) => ({ formIndex: b.formIndex, barIndex: b.barIndex, section: b.section, chords: b.chords.map((c) => ({ text: c.chord ? c.chord.text : 'N.C.', beats: c.beats })) })),
   };
+  if (song.scan) ref.scan = song.scan;
+  return ref;
 }
 
 /** Build a drill spec that plays a tune's changes. */
