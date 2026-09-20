@@ -37,7 +37,9 @@ export default function Today() {
   const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().limit(60).toArray(), []) ?? [];
   const plan = buildPlan(rows, settings.level);
   const startBlock = async (b: Block) => {
-    if (!PRESET_BY_ID[b.spec.id]) await db.drills.put({ id: b.spec.id, spec: b.spec, createdAt: Date.now(), updatedAt: Date.now(), custom: false });
+    for (const x of plan) if (!PRESET_BY_ID[x.spec.id]) await db.drills.put({ id: x.spec.id, spec: x.spec, createdAt: Date.now(), updatedAt: Date.now(), custom: false });
+    const idx = plan.indexOf(b);
+    sessionStorage.setItem('shed.plan', JSON.stringify({ ids: plan.map((x) => x.spec.id), titles: plan.map((x) => x.title), index: idx }));
     nav(`/drill/${b.spec.id}`);
   };
   const last = sessions[0];

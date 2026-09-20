@@ -25,6 +25,7 @@ export interface TunePracticeOptions {
   passes: number;
   halfTime: boolean;
   strictness?: DrillSpec['strictness'];
+  youtube?: string;
 }
 
 function songRef(song: Song, form: FormBar[], from: number, to: number): SongRef {
@@ -79,5 +80,14 @@ export function tuneDrillSpec(base: Song, o: TunePracticeOptions): DrillSpec {
     song: songRef(song, form, from, to),
   };
   if (o.band && timed) spec.band = { ...o.band, style: song.style };
+  const vid = o.youtube ? youtubeId(o.youtube) : null;
+  if (vid && timed) { spec.backing = { kind: 'youtube', videoId: vid }; spec.pacing.countInBars = 0; spec.band = undefined; spec.name = `${song.title} — with backing track`; }
   return spec;
+}
+
+export function youtubeId(url: string): string | null {
+  const t = url.trim();
+  if (/^[\w-]{11}$/.test(t)) return t;
+  const m = /(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{11})/.exec(t);
+  return m ? m[1]! : null;
 }

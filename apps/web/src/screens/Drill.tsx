@@ -10,6 +10,7 @@ import { ChordText } from '../components/ChordDisplay';
 import { Keyboard } from '../components/Keyboard';
 import { BeatPulse } from '../components/BeatPulse';
 import { ChordGrid } from '../components/ChordGrid';
+import { YouTube, type YTPlayer } from '../components/YouTube';
 import { recentAttempts, smartWeight } from '../lib/stats';
 import { FAMILY_LABEL, suffixOf } from '../lib/suffix';
 import { speak, spokenChord } from '../lib/speech';
@@ -43,6 +44,10 @@ export default function Drill() {
   const [spec, setSpec] = useState<DrillSpec | null>(null);
   const [view, setView] = useState<View>(initial);
   const [ready, setReady] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const [tapBpm, setTapBpm] = useState<number | null>(null);
+  const taps = useRef<number[]>([]);
+  const ytRef = useRef<YTPlayer | null>(null);
   const runnerRef = useRef<DrillRunner | null>(null);
   const bandRef = useRef<RhythmSection | null>(null);
   const flashKey = useRef(0);
@@ -106,8 +111,31 @@ export default function Drill() {
     runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
     setReady(true);
+    if (spec.backing) { transport.muted = true; setArmed(true); return; } // wait for the tap on beat 1
     runner.start();
   }, [spec, settings.latencyOffsetMs]);
+
+  /** Backing track: tap tempo (t) and go on beat 1 (space / sustain pedal). */
+  const tapTempo = useCallback(() => {
+    const now = performance.now();
+    taps.current = taps.current.filter((x) => now - x < 4000);
+    taps.current.push(now);
+    if (taps.current.length >= 3) {
+      const iv = taps.current.slice(1).map((x, i) => x - taps.current[i]!);
+      iv.sort((a, b) => a - b);
+      const med = iv[Math.floor(iv.length / 2)]!;
+      const bpm = Math.round(60000 / med);
+      setTapBpm(bpm);
+      runnerRef.current?.setBpm(bpm);
+    }
+  }, []);
+  const goOnOne = useCallback(() => {
+    const run = runnerRef.current;
+    if (!run) return;
+    if (run.state === 'idle') { run.start(); setArmed(false); }
+    else if (run.state === 'running' || run.state === 'countIn') { run.pause(); run.resume(); } // re-anchor on this chord
+    else if (run.state === 'paused') run.resume();
+  }, []);
 
   const saveAndReview = async (s: DrillSpec, summary: DrillSummary) => {
     const sessionId = crypto.randomUUID();
@@ -138,15 +166,16 @@ export default function Drill() {
     const offCC = onMidiCC(({ controller, value }) => {
       const run = r(); if (!run) return;
       if (controller === 64 && value >= 64) {
+        if (spec?.backing && run.state === 'idle') { goOnOne(); return; }
         const now = performance.now();
         if (now - lastSustain < 400) { if (run.state === 'paused') run.resume(); else run.pause(); }
         lastSustain = now;
       }
     });
     return () => { window.removeEventListener('keydown', kd); offCC(); };
-  }, [ready]);
+  }, [ready, spec, goOnOne, tapTempo]);
 
-  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); getAudio().transport.stop(); }, []);
+  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
 
   const run = runnerRef.current;
   const t = view.target;
@@ -175,6 +204,8 @@ export default function Drill() {
           <Chip>{spec.voiceLeading === 'strict' ? 'Voice leading on' : 'Any voicing in family'}</Chip>
           <Chip>{spec.pacing.mode === 'free' ? 'Free time' : `${spec.pacing.bpm} bpm · ${spec.pacing.beatsPerChord} beats/chord`}</Chip>
           {spec.ladder && <Chip>Speed ladder +{spec.ladder.up}/−{spec.ladder.down}</Chip>}
+          {spec.band && <Chip>Band: {[spec.band.bass && 'bass', spec.band.drums && 'drums'].filter(Boolean).join(' + ')} · {spec.band.style}</Chip>}
+          {spec.backing && <Chip>YouTube backing track</Chip>}
         </div>
         <button className="btn btn-primary text-lg px-8 py-4" onClick={() => void start()}>Start</button>
         <div className="text-xs text-ink-faint max-w-sm">
@@ -202,6 +233,26 @@ export default function Drill() {
         <button className="btn btn-ghost !py-1 !px-2" onClick={() => (run?.state === 'paused' ? run.resume() : run?.pause())}>{view.state === 'paused' ? 'Resume' : 'Pause'}</button>
       </div>
 
+      {spec.backing && (
+        <div className="px-4 pt-2 flex flex-col md:flex-row gap-3 items-start">
+          <YouTube videoId={spec.backing.videoId} onReady={(p) => { ytRef.current = p; }} className="w-full md:w-72 aspect-video rounded-xl overflow-hidden bg-black shrink-0" />
+          <div className="card text-sm space-y-2 flex-1">
+            <div className="label">Sync to the track</div>
+            {armed ? (
+              <div className="text-ink-dim">1. Play the video. 2. Tap <kbd>t</kbd> on a few beats to set the tempo{tapBpm ? <span className="text-ink"> — {tapBpm} bpm</span> : ''}. 3. Press <kbd>space</kbd> (or the sustain pedal) exactly on beat 1 of the form.</div>
+            ) : (
+              <div className="text-ink-dim">Drifting? Press <kbd>space</kbd> on beat 1 of the current chord to re-anchor, <kbd>[</kbd>/<kbd>]</kbd> to nudge 50 ms, <kbd>t</kbd>×4 to retap the tempo.</div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-ghost !py-1" onClick={() => ytRef.current?.playVideo()}>Play video</button>
+              <button className="btn btn-ghost !py-1" onClick={tapTempo}>Tap tempo{tapBpm ? ` (${tapBpm})` : ''}</button>
+              <button className="btn btn-primary !py-1" onClick={goOnOne}>{armed ? 'Go — on beat 1' : 'Re-anchor on 1'}</button>
+              <button className="btn btn-ghost !py-1" onClick={() => getAudio().transport.nudge(-0.05)}>−50 ms</button>
+              <button className="btn btn-ghost !py-1" onClick={() => getAudio().transport.nudge(0.05)}>+50 ms</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* chord display */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 gap-6">
         {view.state === 'countIn' && <div className="label text-warn">Count-in</div>}

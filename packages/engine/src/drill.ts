@@ -72,6 +72,8 @@ export interface DrillSpec {
   tags?: string[];
   band?: BandSpec;
   song?: SongRef;
+  /** External backing track: the drill waits for a tap on beat 1, runs with the click muted. */
+  backing?: { kind: 'youtube'; videoId: string; startSec?: number };
 }
 
 export interface Target {

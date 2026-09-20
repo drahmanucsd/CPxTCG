@@ -22,6 +22,9 @@ export default function Review() {
   const grouped = new Map<string, TargetResult[]>();
   for (const m of misses) { const k = `${m.chordText} ${m.family}`; grouped.set(k, [...(grouped.get(k) ?? []), m]); }
   const acc = s.total ? Math.round((100 * s.correct) / s.total) : 0;
+  const plan = readPlan();
+  const nextBlock = plan && plan.ids[plan.index] === session.specId && plan.index + 1 < plan.ids.length ? { id: plan.ids[plan.index + 1]!, title: plan.titles[plan.index + 1]! } : null;
+  const goNext = () => { if (!plan || !nextBlock) return; sessionStorage.setItem('shed.plan', JSON.stringify({ ...plan, index: plan.index + 1 })); nav(`/drill/${nextBlock.id}`); };
 
   const drillThese = async () => {
     const base = PRESET_BY_ID[session.specId] ?? (await db.drills.get(session.specId))?.spec;
@@ -90,7 +93,8 @@ export default function Review() {
         </div>
       </section>
       <div className="flex gap-2">
-        <Link to={`/drill/${session.specId}`} className="btn btn-primary">Again</Link>
+        {nextBlock && <button className="btn btn-primary" onClick={goNext}>Next block: {nextBlock.title} →</button>}
+        <Link to={`/drill/${session.specId}`} className={`btn ${nextBlock ? 'btn-ghost' : 'btn-primary'}`}>Again</Link>
         <Link to="/" className="btn btn-ghost">Done</Link>
       </div>
     </div>
@@ -99,4 +103,8 @@ export default function Review() {
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' }) {
   return <div className="card"><div className="label">{label}</div><div className={`text-2xl font-semibold mt-1 ${tone === 'good' ? 'text-good' : tone === 'warn' ? 'text-warn' : tone === 'bad' ? 'text-bad' : ''}`}>{value}</div></div>;
+}
+
+function readPlan(): { ids: string[]; titles: string[]; index: number } | null {
+  try { const raw = sessionStorage.getItem('shed.plan'); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }

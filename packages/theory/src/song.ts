@@ -170,7 +170,10 @@ export function guideTones(chords: Array<{ chord: ChordSymbol }>, start: { upper
     const cost = (o: { u: number; l: number }) => Math.abs(o.u - upper) + Math.abs(o.l - lower) + (o.u <= o.l ? 3 : 0);
     let pick = cost(optA) <= cost(optB) ? 'A' : 'B';
     if (first) { pick = 'A'; first = false; }
-    const o = pick === 'A' ? optA : optB;
+    const o = pick === 'A' ? { ...optA } : { ...optB };
+    // keep the pair in a playable window; an octave jump at a chord change is what players do
+    if (o.u < 58) { o.u += 12; o.l += 12; }
+    if (o.l > 72) { o.u -= 12; o.l -= 12; }
     upper = o.u; lower = o.l;
     out.push(pick === 'A' ? { third: o.u, seventh: o.l } : { third: o.l, seventh: o.u });
   }

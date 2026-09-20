@@ -114,6 +114,9 @@ export class Transport extends Emitter<TransportEvents> {
     this.emit('tempo', { bpm });
   }
 
+  /** Shift the grid by dt seconds (positive = beats happen later). For syncing to an external track. */
+  nudge(dt: number): void { this.startTime += dt; }
+
   /** Called on every timer tick: schedule clicks up to lookAhead ahead and emit beats that are due. */
   tick(): void {
     if (!this.running) return;
