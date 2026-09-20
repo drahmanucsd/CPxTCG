@@ -4,7 +4,7 @@
  */
 import {
   type ChordSymbol, type Key, type KeyOrder, type PitchClass, type ProgressionChord, type RealizeOptions, type Strictness, type Verdict, type Voicing,
-  STRICTNESS_ORDER, blues, chooseVoicing, cycle, evaluate, generateVoicings, iiVIAllKeys, parseProgression, randomChord, turnaround, keySequence, formatChord,
+  STRICTNESS_ORDER, blues, chooseVoicing, cycle, evaluate, generateVoicings, iiVIAllKeys, parseProgression, randomChord, turnaround, keySequence, formatChord, qualityClass,
 } from '@shed/theory';
 import { type Clock, Emitter } from './clock.js';
 import type { Attempt, ChordCapture } from './capture.js';
@@ -74,6 +74,8 @@ export interface DrillSpec {
   song?: SongRef;
   /** External backing track: the drill waits for a tap on beat 1, runs with the click muted. */
   backing?: { kind: 'youtube'; videoId: string; startSec?: number };
+  /** "Name it & play it": the player must also say the chord name; graded separately. */
+  speak?: boolean;
 }
 
 export interface Target {
@@ -108,6 +110,7 @@ export interface TargetResult {
   targetNotes: number[];
   bpm: number;
   pass: number;
+  spoken?: { heard: string; ok: boolean };
 }
 
 export interface DrillSummary {
@@ -131,6 +134,7 @@ export interface DrillEvents extends Record<string, unknown> {
   hint: { target: Target; level: number };
   tempo: { bpm: number };
   pass: { pass: number; correct: number; total: number };
+  spoken: { target: Target; heard: string; ok: boolean };
   end: { summary: DrillSummary };
 }
 
@@ -315,6 +319,17 @@ export class DrillRunner extends Emitter<DrillEvents> {
     r.hints = Math.min(3, r.hints + 1);
     this.emit('hint', { target: t, level: r.hints });
     return r.hints;
+  }
+
+  /** Record a spoken answer for a target (speech drills). Returns whether it matched. */
+  markSpoken(targetIndex: number, heard: string, said: ChordSymbol): boolean {
+    const t = this.targets[targetIndex];
+    if (!t) return false;
+    const ok = said.root === t.chord.root && qualityClass(said) === qualityClass(t.chord);
+    const r = this.resultFor(t);
+    if (!r.spoken?.ok) r.spoken = { heard, ok };
+    this.emit('spoken', { target: t, heard, ok });
+    return ok;
   }
 
   setBpm(bpm: number): void {

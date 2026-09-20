@@ -9,3 +9,4 @@ export * from './song.js';
 export * from './chartText.js';
 export * from './ireal.js';
 export * from './library.js';
+export * from './spoken.js';

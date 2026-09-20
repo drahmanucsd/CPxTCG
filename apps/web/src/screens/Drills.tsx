@@ -166,6 +166,7 @@ function Editor({ spec: initialSpec, onClose }: { spec: DrillSpec; onClose: () =
               <option value="symbol">Chord symbol</option><option value="roman">Roman numeral (when available)</option><option value="hidden">Hidden until you play</option>
             </select>
           </Row>
+          <Row label="Name it & play it"><label className="text-sm"><input type="checkbox" checked={!!s.speak} onChange={(e) => up({ speak: e.target.checked })} /> say the chord name out loud too (voice recognition; pairs well with roman-numeral prompts)</label></Row>
         </Section>
 
         <Section title="Pacing">

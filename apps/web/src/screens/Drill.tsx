@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { DrillRunner, PRESET_BY_ID, RhythmSection, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
-import { STRICTNESS_LABEL, chordTones, spellPc, type PitchClass, type Verdict } from '@shed/theory';
+import { DrillRunner, PRESET_BY_ID, RhythmSection, SpeechInput, speechSupported, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
+import { STRICTNESS_LABEL, STRICTNESS_ORDER, chordTones, keyName, spellPc, type PitchClass, type Verdict } from '@shed/theory';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 import { getCapture, onMidiCC, startMidi, useComputerKeyboardPiano, useMidiStore } from '../midi/midiService';
 import { useSettings } from '../store/settings';
@@ -50,6 +50,8 @@ export default function Drill() {
   const ytRef = useRef<YTPlayer | null>(null);
   const runnerRef = useRef<DrillRunner | null>(null);
   const bandRef = useRef<RhythmSection | null>(null);
+  const speechRef = useRef<SpeechInput | null>(null);
+  const [heard, setHeard] = useState<{ text: string; ok: boolean | null } | null>(null);
   const flashKey = useRef(0);
   useComputerKeyboardPiano(ready, 3);
 
@@ -73,7 +75,10 @@ export default function Drill() {
     capture.reset();
     const smart = spec.generator.kind === 'random' && spec.generator.smart;
     const weight = smart ? smartWeight(await recentAttempts(60)) : undefined;
-    const runner = new DrillRunner({ spec, clock, capture, transport, weight, latencyOffsetMs: settings.latencyOffsetMs });
+    // microphone input can't hear octaves reliably: never grade stricter than octaveFree
+    const micMode = useMidiStore.getState().inputMode === 'mic';
+    const effective: DrillSpec = micMode && STRICTNESS_ORDER.indexOf(spec.strictness) < STRICTNESS_ORDER.indexOf('octaveFree') ? { ...spec, strictness: 'octaveFree' } : spec;
+    const runner = new DrillRunner({ spec: effective, clock, capture, transport, weight, latencyOffsetMs: micMode ? settings.latencyOffsetMs + 60 : settings.latencyOffsetMs });
     runnerRef.current = runner;
     if (spec.band && spec.pacing.mode === 'timed') {
       bandRef.current?.stop();
@@ -108,8 +113,31 @@ export default function Drill() {
     });
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
-    runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; void saveAndReview(spec, summary); });
+    runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
+    if (spec.speak && speechSupported()) {
+      const sp = new SpeechInput();
+      speechRef.current = sp;
+      sp.on('chord', ({ chord, heard: text }) => {
+        const t = runner.currentTarget;
+        if (!t) return;
+        const ok = runner.markSpoken(t.index, text, chord);
+        setHeard({ text, ok });
+      });
+      sp.on('command', ({ command }) => {
+        if (command === 'next') runner.skip();
+        else if (command === 'slower') runner.setBpm(Math.max(30, runner.bpm - 8));
+        else if (command === 'faster') runner.setBpm(Math.min(300, runner.bpm + 8));
+        else if (command === 'stop') runner.end();
+        else if (command === 'pause') runner.pause();
+        else if (command === 'resume') runner.resume();
+        else if (command === 'hint') runner.hint();
+        else if (command === 'play') { const t = runner.currentTarget; if (t) playVoicing(t.voicing.notes); }
+      });
+      sp.on('transcript', ({ text, final }) => { if (!final) setHeard((h) => (h?.ok !== null ? { text, ok: null } : h)); });
+      sp.start();
+    }
+    runner.on('target', () => setHeard(null));
     setReady(true);
     if (spec.backing) { transport.muted = true; setArmed(true); return; } // wait for the tap on beat 1
     runner.start();
@@ -175,7 +203,7 @@ export default function Drill() {
     return () => { window.removeEventListener('keydown', kd); offCC(); };
   }, [ready, spec, goOnOne, tapTempo]);
 
-  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
+  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); speechRef.current?.stop(); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
 
   const run = runnerRef.current;
   const t = view.target;
@@ -206,6 +234,8 @@ export default function Drill() {
           {spec.ladder && <Chip>Speed ladder +{spec.ladder.up}/−{spec.ladder.down}</Chip>}
           {spec.band && <Chip>Band: {[spec.band.bass && 'bass', spec.band.drums && 'drums'].filter(Boolean).join(' + ')} · {spec.band.style}</Chip>}
           {spec.backing && <Chip>YouTube backing track</Chip>}
+          {spec.speak && <Chip>Name it & play it (voice)</Chip>}
+          {midi.inputMode === 'mic' && <Chip>Microphone input · graded at pitch-class level</Chip>}
         </div>
         <button className="btn btn-primary text-lg px-8 py-4" onClick={() => void start()}>Start</button>
         <div className="text-xs text-ink-faint max-w-sm">
@@ -273,6 +303,7 @@ export default function Drill() {
             <span>{FAMILY_LABEL[t.voicing.family] ?? t.voicing.family}</span>
             {view.hint >= 1 && tones && <div className="mt-1 text-ink">Chord tones: {tones.memberPcs.map((p) => spellPc(p as PitchClass, 'flat')).join(' ')}</div>}
             {view.hint >= 2 && <div className="text-accent">{t.voicing.label} → {t.voicing.notes.map((n) => noteName(n)).join(' ')}</div>}
+            {spec.speak && <div className={heard ? (heard.ok === null ? 'text-ink-dim' : heard.ok ? 'text-good' : 'text-bad') : 'text-ink-faint'}>🎤 {heard ? `“${heard.text}”${heard.ok === true ? ' ✓' : heard.ok === false ? ' ✗' : ''}` : 'say the chord name'}</div>}
             {view.verdict && <div className={view.verdict.ok ? 'text-good' : 'text-bad'}>{view.verdict.message}{view.latenessMs !== null && view.verdict.ok ? ` · ${view.latenessMs > 0 ? '+' : ''}${view.latenessMs} ms` : ''}</div>}
           </div>
         )}
@@ -304,7 +335,7 @@ export default function Drill() {
             <button className="btn btn-ghost !px-3" onClick={() => run?.setBpm(Math.min(300, (run?.bpm ?? 60) + 4))}>+</button>
           </div>
         )}
-        <span className="ml-auto text-xs text-ink-faint">{midi.connected ? midi.deviceName : 'computer keyboard'}{midi.sustain ? ' · pedal' : ''}</span>
+        <span className="ml-auto text-xs text-ink-faint">{midi.inputMode === 'mic' ? 'microphone' : midi.connected ? midi.deviceName : 'computer keyboard'}{midi.sustain ? ' · pedal' : ''}</span>
         <button className="btn btn-danger" onClick={() => run?.end()}>End</button>
       </div>
 
@@ -329,7 +360,7 @@ export default function Drill() {
 
 function Prompt({ t, spec, revealed, style }: { t: Target; spec: DrillSpec; revealed: boolean; style: 'realbook' | 'plain' }) {
   if (spec.prompt === 'hidden' && !revealed) return <span className="text-ink-faint">?</span>;
-  if (spec.prompt === 'roman' && t.pc.roman) return <span className="chord-symbol">{t.pc.roman}</span>;
+  if (spec.prompt === 'roman' && t.pc.roman) return <span className="chord-symbol">{t.pc.key && <span className="text-[0.35em] text-ink-dim align-middle mr-[0.3em]">in {keyName(t.pc.key)}</span>}{t.pc.roman}</span>;
   return <ChordText chord={t.chord} style={style} />;
 }
 

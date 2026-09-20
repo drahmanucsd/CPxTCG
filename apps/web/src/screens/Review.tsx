@@ -87,7 +87,7 @@ export default function Review() {
         <div className="flex flex-wrap gap-1.5">
           {s.results.map((r) => (
             <span key={r.index} title={`${r.message}${r.latenessMs !== null ? ` · ${r.latenessMs} ms` : ''}`} className={`rounded-md px-2 py-1 text-sm ${r.ok ? 'bg-good/15 text-good' : 'bg-bad/15 text-bad'}`}>
-              <ChordText chord={r.chord} style={settings.displayStyle} />{r.hints > 0 && <sup className="text-accent ml-0.5">h</sup>}
+              <ChordText chord={r.chord} style={settings.displayStyle} />{r.hints > 0 && <sup className="text-accent ml-0.5">h</sup>}{r.spoken && <sup className={`ml-0.5 ${r.spoken.ok ? 'text-good' : 'text-bad'}`} title={r.spoken.heard}>🎤</sup>}
             </span>
           ))}
         </div>

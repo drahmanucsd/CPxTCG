@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { formatChord } from '@shed/theory';
 import { medianOffsetMs } from '@shed/engine';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
-import { onMidiNote, selectDevice, useComputerKeyboardPiano, useMidiStatus } from '../midi/midiService';
+import { onMidiNote, selectDevice, setInputMode, useComputerKeyboardPiano, useMidiStatus } from '../midi/midiService';
+import { speechSupported } from '@shed/engine';
 import { useSettings } from '../store/settings';
 import { Keyboard } from '../components/Keyboard';
 import { FAMILY_LABEL } from '../lib/suffix';
@@ -16,7 +17,16 @@ export default function Devices() {
       <h1 className="text-2xl font-semibold tracking-tight">Devices & settings</h1>
 
       <section className="card space-y-3">
-        <div className="label">MIDI input</div>
+        <div className="flex items-center gap-3">
+          <div className="label">Input</div>
+          <div className="flex gap-1 text-xs">
+            <button className={`rounded-full px-3 py-1 ${midi.inputMode === 'midi' ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim'}`} onClick={() => void setInputMode('midi')}>MIDI</button>
+            <button className={`rounded-full px-3 py-1 ${midi.inputMode === 'mic' ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim'}`} onClick={() => void unlockAudio().then(() => setInputMode('mic'))}>Microphone</button>
+          </div>
+          {midi.inputMode === 'mic' && <div className="flex-1 h-2 rounded-full bg-panel-2 overflow-hidden"><div className="h-full bg-good transition-[width]" style={{ width: `${Math.round(midi.micLevel * 100)}%` }} /></div>}
+        </div>
+        {midi.micError && <div className="text-bad text-sm">{midi.micError}</div>}
+        {midi.inputMode === 'mic' && <div className="text-xs text-ink-dim">Acoustic piano through the laptop mic. Octaves are guessed, so mic drills grade pitch classes (any octave). Stay quiet for a second after switching so the noise floor can settle. Hearing: {midi.micNotes.length ? midi.micNotes.map((n) => noteName(n)).join(' ') : '—'}</div>}
         {!midi.supported && <div className="text-warn text-sm">This browser has no Web MIDI API. Chrome, Edge, Opera and Firefox on desktop/Android support it; Safari and iOS do not. The microphone mode (coming) works everywhere.</div>}
         {midi.error && <div className="text-bad text-sm">{midi.error}</div>}
         {midi.supported && (
@@ -43,6 +53,7 @@ export default function Devices() {
           <select className="select" value={settings.displayStyle} onChange={(e) => settings.set({ displayStyle: e.target.value as 'realbook' | 'plain' })}><option value="realbook">Real Book (Δ − ø °)</option><option value="plain">Plain (maj7 m7 m7b5 dim7)</option></select>
         </label>
         <label className="flex items-center justify-between text-sm">Speak chord names (hands-free)<input type="checkbox" checked={settings.speakPrompts} onChange={(e) => settings.set({ speakPrompts: e.target.checked })} /></label>
+        <div className="text-xs text-ink-dim">Voice input (say the chord name, "next", "slower"…): {speechSupported() ? 'available in this browser — enable per drill ("Name it & play it")' : 'not available in this browser (Chrome/Edge have it)'}</div>
       </section>
 
       <section className="card space-y-4">
@@ -97,3 +108,5 @@ function LatencyCalibration() {
     </section>
   );
 }
+
+function noteName(n: number): string { return ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'][n % 12]! + (Math.floor(n / 12) - 1); }

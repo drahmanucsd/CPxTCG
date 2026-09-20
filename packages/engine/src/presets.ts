@@ -92,4 +92,10 @@ export const PRESETS: DrillSpec[] = [
   },
 ];
 
+PRESETS.push({
+  id: 'name-it-roman', name: 'Name it & play it · roman numerals', description: 'You see ii-7 in a key: say "D minor seven" and play it. Voice + hands.',
+  generator: { kind: 'iiVI', order: 'random' }, families: ['rootlessA', 'rootlessB'], strictness: 'octaveFree', voiceLeading: 'off',
+  pacing: free, lookAhead: 'never', length: { passes: 1 }, prompt: 'roman', speak: true, tags: ['advanced'],
+});
+
 export const PRESET_BY_ID: Record<string, DrillSpec> = Object.fromEntries(PRESETS.map((p) => [p.id, p]));

@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 import { create } from 'zustand';
-import { ChordCapture, ManualMidiSource, WebMidiSource, webMidiSupported, type MidiDeviceInfo, type NoteEvent } from '@shed/engine';
+import { ChordCapture, ManualMidiSource, MicSource, WebMidiSource, webMidiSupported, type MidiDeviceInfo, type NoteEvent } from '@shed/engine';
 import { identify, type Identification } from '@shed/theory';
 import { getAudio } from '../audio/context';
 import { useSettings } from '../store/settings';
@@ -19,15 +19,21 @@ interface MidiState {
   error: string | null;
   sustain: boolean;
   lastNoteAt: number;
+  inputMode: 'midi' | 'mic';
+  micLevel: number;
+  micNotes: number[];
+  micError: string | null;
 }
 
 export const useMidiStore = create<MidiState>(() => ({
-  supported: webMidiSupported(), connected: false, deviceName: '', devices: [], held: [], ident: [], error: null, sustain: false, lastNoteAt: 0,
+  supported: webMidiSupported(), connected: false, deviceName: '', devices: [], held: [], ident: [], error: null, sustain: false, lastNoteAt: 0, inputMode: 'midi', micLevel: 0, micNotes: [], micError: null,
 }));
 
 let web: WebMidiSource | null = null;
 let manual: ManualMidiSource | null = null;
 let capture: ChordCapture | null = null;
+let mic: MicSource | null = null;
+let micMeter: ReturnType<typeof setInterval> | null = null;
 let started = false;
 const noteListeners = new Set<(e: NoteEvent) => void>();
 const ccListeners = new Set<(e: { controller: number; value: number; time: number }) => void>();
@@ -70,6 +76,28 @@ export function startMidi(): void {
       web?.select(wanted && devices.some((d) => d.id === wanted) ? wanted : null);
     });
     void web.start();
+  }
+}
+
+/** Switch between MIDI and microphone input. The mic runs through the same capture/grading path. */
+export async function setInputMode(mode: 'midi' | 'mic'): Promise<void> {
+  startMidi();
+  if (mode === useMidiStore.getState().inputMode && (mode === 'midi' || mic)) return;
+  getCapture().reset();
+  if (mode === 'mic') {
+    const { ctx, clock } = getAudio();
+    if (ctx.state !== 'running') await ctx.resume();
+    mic = new MicSource(ctx, clock);
+    mic.on('note', onNote);
+    mic.on('error', ({ message }) => useMidiStore.setState({ micError: message, inputMode: 'midi' }));
+    useMidiStore.setState({ inputMode: 'mic', micError: null });
+    await mic.start();
+    micMeter = setInterval(() => { if (mic) useMidiStore.setState({ micLevel: mic.level, micNotes: mic.lastNotes.map((n) => n.midi) }); }, 100);
+  } else {
+    mic?.stop(); mic = null;
+    if (micMeter) clearInterval(micMeter);
+    micMeter = null;
+    useMidiStore.setState({ inputMode: 'midi', micLevel: 0, micNotes: [] });
   }
 }
 
