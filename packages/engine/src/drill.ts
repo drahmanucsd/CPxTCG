@@ -34,6 +34,24 @@ export interface Pacing {
 
 export interface Ladder { up: number; down: number; min: number; max: number }
 
+export interface BandSpec {
+  style: 'swing' | 'bossa' | 'ballad' | 'latin' | 'waltz' | 'straight' | 'funk' | 'even8ths';
+  bass: boolean;
+  drums: boolean;
+  volume?: number;
+}
+
+/** Denormalized song info so the drill screen can draw the chart with a cursor. */
+export interface SongRef {
+  songId: string;
+  title: string;
+  /** resolved form bars: each with chord texts + beats, for display */
+  bars: Array<{ formIndex: number; barIndex: number; section?: string; chords: Array<{ text: string; beats: number }> }>;
+  /** first form bar index of the practiced range */
+  from: number;
+  to: number;
+}
+
 export interface DrillSpec {
   id: string;
   name: string;
@@ -52,6 +70,8 @@ export interface DrillSpec {
   /** show roman numerals instead of chord symbols when available */
   prompt?: 'symbol' | 'roman' | 'hidden';
   tags?: string[];
+  band?: BandSpec;
+  song?: SongRef;
 }
 
 export interface Target {
@@ -210,6 +230,18 @@ export class DrillRunner extends Emitter<DrillEvents> {
   }
 
   get currentTarget(): Target | undefined { return this.targets[this.current]; }
+
+  /** The chord sounding on a transport beat (timed mode), with its neighbours — for the rhythm section. */
+  chordAtBeat(beatIndex: number): { chord: ChordSymbol; next: ChordSymbol | null; beatInChord: number; chordBeats: number; target: Target } | null {
+    for (let i = Math.max(0, this.current - 1); i < this.targets.length; i++) {
+      const t = this.targets[i]!;
+      if (t.beatIndex === undefined) continue;
+      if (beatIndex >= t.beatIndex && beatIndex < t.beatIndex + t.beats) {
+        return { chord: t.chord, next: this.targets[i + 1]?.chord ?? null, beatInChord: beatIndex - t.beatIndex, chordBeats: t.beats, target: t };
+      }
+    }
+    return null;
+  }
   get upcoming(): Target[] { return this.targets.slice(this.current + 1, this.current + 3); }
   get resultsSoFar(): TargetResult[] { return [...this.results.values()].sort((a, b) => a.index - b.index); }
 

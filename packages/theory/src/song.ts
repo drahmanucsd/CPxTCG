@@ -1,7 +1,7 @@
 /**
  * Song model: written bars with repeat/ending/segno/coda markers, resolved into a flat playable form.
  */
-import { type ChordSymbol, formatChord, transposeChord } from './chord.js';
+import { type ChordSymbol, transposeChord } from './chord.js';
 import { type PitchClass, keySpelling, pc, relativeMajor } from './pitch.js';
 import type { Key } from './roman.js';
 
@@ -153,19 +153,26 @@ export function sectionRanges(song: Song): Array<{ label: string; from: number; 
   return out;
 }
 
-/** Guide-tone line: 3rd and 7th of every chord in the form, chosen for smooth motion. */
-export function guideTones(chords: Array<{ chord: ChordSymbol }>, startThird = 64): Array<{ third: number; seventh: number }> {
+/**
+ * Guide-tone line: two voices moving through the 3rds and 7ths of every chord, each voice taking
+ * whichever guide tone is nearest — so a ii-V-I reads as the classic stepwise lines.
+ */
+export function guideTones(chords: Array<{ chord: ChordSymbol }>, start: { upper: number; lower: number } = { upper: 64, lower: 59 }): Array<{ third: number; seventh: number }> {
   const out: Array<{ third: number; seventh: number }> = [];
-  let prev: { third: number; seventh: number } | null = null;
+  let upper = start.upper, lower = start.lower;
+  const near = (p: PitchClass, ref: number) => { let n = ref - ((((ref - p) % 12) + 12) % 12); if (ref - n > 6) n += 12; return n; };
+  let first = true;
   for (const { chord } of chords) {
-    const t = formatChord(chord); void t;
-    const thirdPc = pc(chord.root + (chord.quality === 'sus4' ? 5 : ['min', 'halfdim', 'dim', 'minmaj'].includes(chord.quality) ? 3 : 4));
-    const sevPc = pc(chord.root + (chord.seventh === 'maj7' ? 11 : chord.seventh === 'dim7' ? 9 : chord.seventh === 'min7' ? 10 : chord.sixth ? 9 : 11));
-    const near = (p: PitchClass, ref: number) => { let n = ref - ((ref - p) % 12 + 12) % 12; if (ref - n > 6) n += 12; return n; };
-    const third = near(thirdPc, prev ? prev.third : startThird);
-    const seventh = near(sevPc, prev ? prev.seventh : startThird + 5);
-    prev = { third, seventh };
-    out.push(prev);
+    const thirdPc = pc(chord.root + (chord.quality === 'sus4' ? 5 : chord.quality === 'sus2' ? 2 : ['min', 'halfdim', 'dim', 'minmaj'].includes(chord.quality) ? 3 : 4));
+    const sevPc = pc(chord.root + (chord.seventh === 'maj7' ? 11 : chord.seventh === 'dim7' ? 9 : chord.seventh === 'min7' ? 10 : chord.sixth ? 9 : chord.quality === 'maj' ? 11 : 10));
+    const optA = { u: near(thirdPc, upper), l: near(sevPc, lower) };   // upper takes the 3rd
+    const optB = { u: near(sevPc, upper), l: near(thirdPc, lower) };   // upper takes the 7th
+    const cost = (o: { u: number; l: number }) => Math.abs(o.u - upper) + Math.abs(o.l - lower) + (o.u <= o.l ? 3 : 0);
+    let pick = cost(optA) <= cost(optB) ? 'A' : 'B';
+    if (first) { pick = 'A'; first = false; }
+    const o = pick === 'A' ? optA : optB;
+    upper = o.u; lower = o.l;
+    out.push(pick === 'A' ? { third: o.u, seventh: o.l } : { third: o.l, seventh: o.u });
   }
   return out;
 }

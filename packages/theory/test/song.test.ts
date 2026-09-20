@@ -41,7 +41,10 @@ describe('chart text', () => {
     const g = guideTones(formToChords(resolveForm(s)).map((c) => ({ chord: c.chord })));
     expect(g.map((x) => x.third % 12)).toEqual([5, 11, 4]);
     expect(g.map((x) => x.seventh % 12)).toEqual([0, 5, 11]);
-    for (let i = 1; i < g.length; i++) { expect(Math.abs(g[i]!.third - g[i - 1]!.third)).toBeLessThanOrEqual(6); }
+    // Dm7 (F/C) → G7 (B/F): upper voice F→F(7th of G), lower C→B (3rd of G) — stepwise
+    expect(g[0]).toEqual({ third: 65, seventh: 60 });
+    expect(g[1]).toEqual({ third: 59, seventh: 65 });
+    expect(g[2]).toEqual({ third: 64, seventh: 59 });
   });
 });
 

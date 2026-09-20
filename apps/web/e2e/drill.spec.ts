@@ -52,3 +52,33 @@ test('today, drills, progress, devices render', async ({ page }) => {
   await page.goto('/progress');
   await expect(page.getByText('Heatmap')).toBeVisible();
 });
+
+test('tunes: library, tune page, play the changes with the band', async ({ page }) => {
+  await page.goto('/tunes');
+  await expect(page.getByText('I Got Rhythm')).toBeVisible();
+  await page.getByText('I Got Rhythm').click();
+  await expect(page.getByRole('heading', { name: 'I Got Rhythm' })).toBeVisible();
+  await page.screenshot({ path: 'test-results/tune.png' });
+  await page.getByText('Guide tones').click();
+  await page.screenshot({ path: 'test-results/tune-guide.png' });
+  await page.getByText('Flat form').click();
+  await page.getByRole('button', { name: 'B', exact: true }).click();
+  await expect(page.getByText(/bars 17–24/).first()).toBeVisible();
+  await page.getByRole('button', { name: /Play the changes/ }).click();
+  await expect(page.getByRole('heading', { name: /I Got Rhythm — play the changes/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByText('Count-in')).toBeHidden({ timeout: 6000 });
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: 'test-results/tune-drill.png' });
+  await page.getByRole('button', { name: 'End' }).click();
+  await expect(page).toHaveURL(/\/review\//);
+});
+
+test('import an iReal link', async ({ page }) => {
+  await page.goto('/tunes');
+  await page.getByRole('button', { name: 'Import' }).click();
+  await page.locator('textarea').fill('irealbook://My%20Import=Doe%20Jane=Medium%20Swing=F=n=T44*A{C-7 F7 |Bb^7 |N1Bb^7 |}N2Bb^7 |Z');
+  await page.locator('.card').getByRole('button', { name: 'Import' }).click();
+  await expect(page.getByText('1 tune imported')).toBeVisible();
+  await expect(page.getByText('My Import')).toBeVisible();
+});

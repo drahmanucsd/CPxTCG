@@ -14,6 +14,10 @@ export interface ProgressionChord {
   /** roman numeral label in its key, for prompts */
   roman?: string;
   key?: Key;
+  /** position in a song form, when the progression came from a tune */
+  formIndex?: number;
+  barIndex?: number;
+  beat?: number;
 }
 
 export type Progression = ProgressionChord[];

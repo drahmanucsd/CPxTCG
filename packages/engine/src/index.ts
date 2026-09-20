@@ -5,3 +5,4 @@ export * from './drill.js';
 export * from './presets.js';
 export * from './midi.js';
 export * from './audio.js';
+export * from './rhythmSection.js';

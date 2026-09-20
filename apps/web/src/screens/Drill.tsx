@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { DrillRunner, PRESET_BY_ID, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
+import { DrillRunner, PRESET_BY_ID, RhythmSection, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
 import { STRICTNESS_LABEL, chordTones, spellPc, type PitchClass, type Verdict } from '@shed/theory';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 import { getCapture, onMidiCC, startMidi, useComputerKeyboardPiano, useMidiStore } from '../midi/midiService';
@@ -9,6 +9,7 @@ import { db } from '../db';
 import { ChordText } from '../components/ChordDisplay';
 import { Keyboard } from '../components/Keyboard';
 import { BeatPulse } from '../components/BeatPulse';
+import { ChordGrid } from '../components/ChordGrid';
 import { recentAttempts, smartWeight } from '../lib/stats';
 import { FAMILY_LABEL, suffixOf } from '../lib/suffix';
 import { speak, spokenChord } from '../lib/speech';
@@ -29,9 +30,10 @@ interface View {
   lateSum: number;
   lateN: number;
   pass: number;
+  barResults: Map<number, boolean>;
 }
 
-const initial: View = { target: null, upcoming: [], verdict: null, verdictFinal: false, latenessMs: null, flash: null, beat: { bar: 0, beat: 0, countIn: false, index: -1 }, state: 'idle', bpm: 0, hint: 0, ok: 0, miss: 0, lateSum: 0, lateN: 0, pass: 1 };
+const initial: View = { target: null, upcoming: [], verdict: null, verdictFinal: false, latenessMs: null, flash: null, beat: { bar: 0, beat: 0, countIn: false, index: -1 }, state: 'idle', bpm: 0, hint: 0, ok: 0, miss: 0, lateSum: 0, lateN: 0, pass: 1, barResults: new Map() };
 
 export default function Drill() {
   const { id } = useParams();
@@ -42,6 +44,7 @@ export default function Drill() {
   const [view, setView] = useState<View>(initial);
   const [ready, setReady] = useState(false);
   const runnerRef = useRef<DrillRunner | null>(null);
+  const bandRef = useRef<RhythmSection | null>(null);
   const flashKey = useRef(0);
   useComputerKeyboardPiano(ready, 3);
 
@@ -60,23 +63,37 @@ export default function Drill() {
     if (!spec) return;
     startMidi();
     try { await Promise.race([unlockAudio(), new Promise((r) => setTimeout(r, 1500))]); } catch { /* audio stays locked; drill still runs */ }
-    const { clock, transport } = getAudio();
+    const { ctx, clock, transport } = getAudio();
     const capture = getCapture();
     capture.reset();
     const smart = spec.generator.kind === 'random' && spec.generator.smart;
     const weight = smart ? smartWeight(await recentAttempts(60)) : undefined;
     const runner = new DrillRunner({ spec, clock, capture, transport, weight, latencyOffsetMs: settings.latencyOffsetMs });
     runnerRef.current = runner;
-    setView({ ...initial, bpm: spec.pacing.bpm, state: 'idle' });
+    if (spec.band && spec.pacing.mode === 'timed') {
+      bandRef.current?.stop();
+      bandRef.current = new RhythmSection(ctx, transport, (b) => runner.chordAtBeat(b), spec.band);
+      bandRef.current.start();
+    }
+    setView({ ...initial, bpm: spec.pacing.bpm, state: 'idle', barResults: new Map() });
     runner.on('state', ({ state }) => setView((v) => ({ ...v, state })));
     runner.on('target', ({ target, upcoming }) => {
-      setView((v) => ({ ...v, target, upcoming, verdict: null, verdictFinal: false, latenessMs: null, hint: 0, flash: null, pass: target.pass }));
+      setView((v) => {
+        const barResults = new Map(v.barResults);
+        if (target.pc.formIndex !== undefined && target.pc.formIndex === (spec.song?.from ?? 0)) barResults.clear(); // new chorus
+        return { ...v, target, upcoming, verdict: null, verdictFinal: false, latenessMs: null, hint: 0, flash: null, pass: target.pass, barResults };
+      });
       if (useSettings.getState().speakPrompts) speak(spokenChord(target.chord));
     });
-    runner.on('verdict', ({ verdict, latenessMs, final, attempt }) => {
+    runner.on('verdict', ({ verdict, latenessMs, final, attempt, target }) => {
       flashKey.current++;
       void attempt;
       setView((v) => {
+        const barResults = v.barResults;
+        if (target.pc.formIndex !== undefined && (final || verdict.ok)) {
+          const prev = barResults.get(target.pc.formIndex);
+          barResults.set(target.pc.formIndex, prev === false ? false : verdict.ok);
+        }
         const ok = verdict.ok ? v.ok + 1 : v.ok;
         const miss = final && !verdict.ok ? v.miss + 1 : v.miss;
         const lateSum = verdict.ok && latenessMs !== null ? v.lateSum + latenessMs : v.lateSum;
@@ -86,7 +103,7 @@ export default function Drill() {
     });
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
-    runner.on('end', ({ summary }) => { void saveAndReview(spec, summary); });
+    runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
     setReady(true);
     runner.start();
@@ -129,7 +146,7 @@ export default function Drill() {
     return () => { window.removeEventListener('keydown', kd); offCC(); };
   }, [ready]);
 
-  useEffect(() => () => { runnerRef.current?.end(); getAudio().transport.stop(); }, []);
+  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); getAudio().transport.stop(); }, []);
 
   const run = runnerRef.current;
   const t = view.target;
@@ -139,6 +156,8 @@ export default function Drill() {
   const showDiff = view.verdict && !view.verdict.ok;
   const hintNotes = view.hint >= 3 && t ? t.voicing.notes : [];
   const avgLate = view.lateN ? Math.round(view.lateSum / view.lateN) : null;
+  const tuneMode = !!spec?.song;
+  const gridBars = useMemo(() => (spec?.song ? spec.song.bars.map((b) => ({ key: b.formIndex, chords: b.chords, section: b.section })) : []), [spec]);
 
   if (!spec) return <div className="p-8 text-ink-dim">Loading drill…</div>;
 
@@ -190,7 +209,7 @@ export default function Drill() {
           <div className="w-[18vw] text-right text-[6vw] leading-none text-ink-faint truncate">
             {run?.resultsSoFar.at(-1) && t && run.resultsSoFar.at(-1)!.index === t.index - 1 ? <ChordText chord={run.resultsSoFar.at(-1)!.chord} style={settings.displayStyle} /> : null}
           </div>
-          <div key={flashKey.current} className={`text-[16vw] md:text-[13vw] leading-none font-semibold tracking-tight ${view.flash === 'good' ? 'flash-good' : view.flash === 'bad' ? 'flash-bad' : ''}`}>
+          <div key={flashKey.current} className={`${tuneMode ? 'text-[9vw] md:text-[7vw]' : 'text-[16vw] md:text-[13vw]'} leading-none font-semibold tracking-tight ${view.flash === 'good' ? 'flash-good' : view.flash === 'bad' ? 'flash-bad' : ''}`}>
             {t ? <Prompt t={t} spec={spec} revealed={!!view.verdict} style={settings.displayStyle} /> : '—'}
           </div>
           <div className="w-[18vw] text-left text-[6vw] leading-none text-ink-faint truncate">
@@ -206,7 +225,12 @@ export default function Drill() {
             {view.verdict && <div className={view.verdict.ok ? 'text-good' : 'text-bad'}>{view.verdict.message}{view.latenessMs !== null && view.verdict.ok ? ` · ${view.latenessMs > 0 ? '+' : ''}${view.latenessMs} ms` : ''}</div>}
           </div>
         )}
-        <div className="w-full max-w-3xl transition-opacity" style={{ opacity: showDiff || hintNotes.length || midi.held.length ? 1 : 0.25 }}>
+        {tuneMode && (
+          <div className="w-full max-w-5xl max-h-[38vh] overflow-y-auto px-2">
+            <ChordGrid bars={gridBars} compact cursor={t?.pc.formIndex} results={view.barResults} />
+          </div>
+        )}
+        <div className={`w-full ${tuneMode ? 'max-w-xl' : 'max-w-3xl'} transition-opacity`} style={{ opacity: showDiff || hintNotes.length || midi.held.length ? 1 : tuneMode ? 0 : 0.25, display: tuneMode && !(showDiff || hintNotes.length) ? 'none' : undefined }}>
           <Keyboard
             good={showDiff ? view.verdict!.correctNotes : []}
             bad={showDiff ? view.verdict!.wrongNotes : []}

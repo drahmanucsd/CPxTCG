@@ -14,7 +14,14 @@ export interface ClickSink {
 
 export interface BeatEvent { bar: number; beat: number; time: number; countIn: boolean; /** absolute beat index from the start of the music (count-in beats are negative) */ index: number }
 
-export interface TransportEvents extends Record<string, unknown> { beat: BeatEvent; start: { time: number }; stop: { time: number }; tempo: { bpm: number } }
+export interface TransportEvents extends Record<string, unknown> {
+  beat: BeatEvent;
+  /** fired when a beat is scheduled (lookAhead before it sounds) — schedule audio for that beat here */
+  schedule: BeatEvent & { beatDuration: number };
+  start: { time: number };
+  stop: { time: number };
+  tempo: { bpm: number };
+}
 
 export interface TransportOptions {
   bpm: number;
@@ -123,7 +130,9 @@ export class Transport extends Emitter<TransportEvents> {
         this.sink.click(t, countIn ? 'countIn' : beatInBar === 0 ? 'bar' : 'beat');
         for (let s = 1; s < this.subdivision; s++) this.sink.click(t + (s * this.beatDuration) / this.subdivision, 'sub');
       }
-      this.pendingBeats.push({ bar, beat: beatInBar, time: t, countIn, index: idx });
+      const ev: BeatEvent = { bar, beat: beatInBar, time: t, countIn, index: idx };
+      this.pendingBeats.push(ev);
+      this.emit('schedule', { ...ev, beatDuration: this.beatDuration });
       this.nextBeatIndex++;
     }
     // emit beats whose time has arrived
