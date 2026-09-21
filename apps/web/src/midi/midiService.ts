@@ -154,7 +154,7 @@ export function useComputerKeyboardPiano(enabled: boolean, baseOctave = 3) {
 }
 
 // Test hook: lets Playwright inject notes as if from a MIDI device.
-declare global { interface Window { __shed?: { noteOn: (n: number, v?: number) => void; noteOff: (n: number) => void; chord: (notes: number[], holdMs?: number) => Promise<void> } } }
+declare global { interface Window { __shed?: { noteOn: (n: number, v?: number) => void; noteOff: (n: number) => void; chord: (notes: number[], holdMs?: number) => Promise<void> }; __shedTarget?: { notes: number[]; chord: string; family: string; index: number } | null } }
 if (typeof window !== 'undefined') {
   window.__shed = {
     noteOn: (n, v = 90) => getManualSource().noteOn(n, v),

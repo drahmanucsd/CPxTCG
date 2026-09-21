@@ -26,7 +26,7 @@ export default function Progress() {
         <button className="btn btn-ghost" onClick={() => void exportJson()}>Export JSON</button>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <div className="card"><div className="label">Streak</div><div className="text-2xl font-semibold mt-1">{streakDays(sessions)} days</div></div>
+        <div className="card"><div className="label">Streak</div><div className="text-2xl font-semibold mt-1">{streakDays(sessions)} {streakDays(sessions) === 1 ? 'day' : 'days'}</div></div>
         <div className="card"><div className="label">This week</div><div className="text-2xl font-semibold mt-1">{minutesThisWeek} min</div></div>
         <div className="card"><div className="label">Chords (60 days)</div><div className="text-2xl font-semibold mt-1">{rows.length}</div></div>
       </div>

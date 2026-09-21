@@ -113,6 +113,7 @@ export default function Drill() {
         return { ...v, target, upcoming, verdict: null, verdictFinal: false, latenessMs: null, hint: 0, flash: null, pass: target.pass, barResults };
       });
       if (useSettings.getState().speakPrompts) speak(spokenChord(target.chord));
+      window.__shedTarget = { notes: target.voicing.notes, chord: target.chord.text, family: target.voicing.family, index: target.index };
     });
     runner.on('verdict', ({ verdict, latenessMs, final, attempt, target }) => {
       flashKey.current++;
@@ -132,7 +133,7 @@ export default function Drill() {
     });
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
-    runner.on('end', ({ summary }) => { bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
+    runner.on('end', ({ summary }) => { window.__shedTarget = null; bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
     if (spec.speak && speechSupported()) {
       const sp = new SpeechInput();
