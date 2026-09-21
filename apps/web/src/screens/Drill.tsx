@@ -10,6 +10,7 @@ import { ChordText } from '../components/ChordDisplay';
 import { Keyboard } from '../components/Keyboard';
 import { BeatPulse } from '../components/BeatPulse';
 import { ChordGrid } from '../components/ChordGrid';
+import { MetronomePanel, type MetronomeConfig } from '../components/MetronomePanel';
 import { YouTube, type YTPlayer } from '../components/YouTube';
 import { PageImage } from './Tune';
 import { StemPlayer, loadStems } from '../lib/records';
@@ -30,13 +31,20 @@ interface View {
   hint: number;
   ok: number;
   miss: number;
+  /** the four outcomes — see docs/06-review-ux.md */
+  clean: number;
+  offTime: number;
+  wrong: number;
+  blank: number;
   lateSum: number;
   lateN: number;
   pass: number;
+  /** 'onCorrect' mode: how many times the current chord has come round again */
+  repeats: number;
   barResults: Map<number, boolean>;
 }
 
-const initial: View = { target: null, upcoming: [], verdict: null, verdictFinal: false, latenessMs: null, flash: null, beat: { bar: 0, beat: 0, countIn: false, index: -1 }, state: 'idle', bpm: 0, hint: 0, ok: 0, miss: 0, lateSum: 0, lateN: 0, pass: 1, barResults: new Map() };
+const initial: View = { target: null, upcoming: [], verdict: null, verdictFinal: false, latenessMs: null, flash: null, beat: { bar: 0, beat: 0, countIn: false, index: -1 }, state: 'idle', bpm: 0, hint: 0, ok: 0, miss: 0, clean: 0, offTime: 0, wrong: 0, blank: 0, lateSum: 0, lateN: 0, pass: 1, repeats: 0, barResults: new Map() };
 
 export default function Drill() {
   const { id } = useParams();
@@ -61,6 +69,7 @@ export default function Drill() {
   const [recordReady, setRecordReady] = useState(false);
   const syncPoll = useRef<number | null>(null);
   const [showPage, setShowPage] = useState(true);
+  const [metroOpen, setMetroOpen] = useState(false);
   useEffect(() => {
     let url: string | null = null;
     if (spec?.song?.scan) void db.images.get(spec.song.scan.imageId).then((row) => { if (row) { url = URL.createObjectURL(row.blob); setPageUrl(url); } });
@@ -110,14 +119,13 @@ export default function Drill() {
       setView((v) => {
         const barResults = new Map(v.barResults);
         if (target.pc.formIndex !== undefined && target.pc.formIndex === (spec.song?.from ?? 0)) barResults.clear(); // new chorus
-        return { ...v, target, upcoming, verdict: null, verdictFinal: false, latenessMs: null, hint: 0, flash: null, pass: target.pass, barResults };
+        return { ...v, target, upcoming, verdict: null, verdictFinal: false, latenessMs: null, hint: 0, flash: null, pass: target.pass, repeats: 0, barResults };
       });
       if (useSettings.getState().speakPrompts) speak(spokenChord(target.chord));
       window.__shedTarget = { notes: target.voicing.notes, chord: target.chord.text, family: target.voicing.family, index: target.index };
     });
-    runner.on('verdict', ({ verdict, latenessMs, final, attempt, target }) => {
+    runner.on('verdict', ({ verdict, latenessMs, final, target }) => {
       flashKey.current++;
-      void attempt;
       setView((v) => {
         const barResults = v.barResults;
         if (target.pc.formIndex !== undefined && (final || verdict.ok)) {
@@ -128,11 +136,19 @@ export default function Drill() {
         const miss = final && !verdict.ok ? v.miss + 1 : v.miss;
         const lateSum = verdict.ok && latenessMs !== null ? v.lateSum + latenessMs : v.lateSum;
         const lateN = verdict.ok && latenessMs !== null ? v.lateN + 1 : v.lateN;
-        return { ...v, verdict, verdictFinal: final, latenessMs, flash: verdict.ok ? 'good' : 'bad', ok, miss, lateSum, lateN };
+        // right notes outside the window are their own outcome, not a pass
+        const window = spec.pacing.timingWindowMs ?? 120;
+        const inTime = latenessMs === null || Math.abs(latenessMs) <= window;
+        const clean = verdict.ok && inTime ? v.clean + 1 : v.clean;
+        const offTime = verdict.ok && !inTime ? v.offTime + 1 : v.offTime;
+        const blank = final && !verdict.ok && verdict.diagnosis.includes('nothingPlayed') ? v.blank + 1 : v.blank;
+        const wrong = final && !verdict.ok && !verdict.diagnosis.includes('nothingPlayed') ? v.wrong + 1 : v.wrong;
+        return { ...v, verdict, verdictFinal: final, latenessMs, flash: verdict.ok ? (inTime ? 'good' : 'bad') : 'bad', ok, miss, clean, offTime, wrong, blank, lateSum, lateN };
       });
     });
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
+    runner.on('repeat', ({ repeats }) => setView((v) => ({ ...v, repeats, verdict: null, verdictFinal: false, latenessMs: null, flash: null })));
     runner.on('end', ({ summary }) => { window.__shedTarget = null; bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
     if (spec.speak && speechSupported()) {
@@ -189,9 +205,8 @@ export default function Drill() {
         const poll = () => {
           const cur = p.getCurrentTime();
           if (p.getPlayerState() === 1 && cur >= pre) {
-            const at = ctx.currentTime + (b.anchorSec! - cur) - countInSec + (cur - pre); // = now + (anchor - cur) - countIn ... aligned so beat 1 = anchor
+            // start the count-in so beat 1 lands exactly on the anchor
             runner.start({ at: ctx.currentTime + (b.anchorSec! - cur) - countInSec });
-            void at;
             return;
           }
           syncPoll.current = requestAnimationFrame(poll);
@@ -265,8 +280,11 @@ export default function Drill() {
       else if (e.key === 'ArrowRight' || e.key === 'Enter') { run.skip(); }
       else if (e.key === 'h' || e.key === '?') { run.hint(); }
       else if (e.key === 'p' || e.key === 'l') { const t = run.currentTarget; if (t) playVoicing(t.voicing.notes); }
-      else if (e.key === '-' || e.key === '_') { run.setBpm(Math.max(30, run.bpm - 4)); }
-      else if (e.key === '=' || e.key === '+') { run.setBpm(Math.min(300, run.bpm + 4)); }
+      else if (e.key === '-') { run.setBpm(Math.max(30, run.bpm - 1)); }
+      else if (e.key === '=') { run.setBpm(Math.min(300, run.bpm + 1)); }
+      else if (e.key === '_') { run.setBpm(Math.max(30, run.bpm - 5)); }
+      else if (e.key === '+') { run.setBpm(Math.min(300, run.bpm + 5)); }
+      else if (e.key === 'm') { setMetroOpen((o) => !o); }
     };
     window.addEventListener('keydown', kd);
     let lastSustain = 0;
@@ -286,11 +304,38 @@ export default function Drill() {
 
   const run = runnerRef.current;
   const t = view.target;
+  /** One writer for every metronome setting, live during a run and before it starts. */
+  const metro: MetronomeConfig = {
+    bpm: (view.bpm || spec?.pacing.bpm) ?? 120,
+    timeSig: spec?.pacing.timeSig ?? { beats: 4, unit: 4 },
+    subdivision: spec?.pacing.subdivision ?? 1,
+    countInBars: spec?.pacing.countInBars ?? 1,
+  };
+  const setMetro = (patch: Partial<MetronomeConfig>) => {
+    setSpec((prev) => (prev ? { ...prev, pacing: { ...prev.pacing, ...patch } } : prev));
+    if (patch.bpm !== undefined) {
+      if (runnerRef.current) runnerRef.current.setBpm(patch.bpm);
+      else setView((v) => ({ ...v, bpm: patch.bpm! }));
+    }
+    if (patch.subdivision !== undefined) getAudio().transport.subdivision = patch.subdivision;
+    if (patch.timeSig !== undefined && !runnerRef.current) getAudio().transport.timeSig = patch.timeSig;
+    if (patch.countInBars !== undefined && !runnerRef.current) getAudio().transport.countInBars = patch.countInBars;
+  };
   const tones = useMemo(() => (t ? chordTones(t.chord) : null), [t]);
   const beatsPerBar = spec?.pacing.timeSig.beats ?? 4;
   const showNext = spec?.lookAhead === 'always' || (spec?.lookAhead === 'lastBeat' && t && view.beat.index >= (t.beatIndex ?? 0) + t.beats - 1);
   const showDiff = view.verdict && !view.verdict.ok;
-  const hintNotes = view.hint >= 3 && t ? t.voicing.notes : [];
+  // hints can land as text, on the keyboard, or both (Settings → Hints)
+  const hintOnKeys = settings.hintStyle !== 'text';
+  const hintAsText = settings.hintStyle !== 'keyboard';
+  const hintNotes = t && ((hintOnKeys && view.hint >= 2) || view.hint >= 3) ? t.voicing.notes : [];
+  const hintTones = t && tones && hintOnKeys && view.hint >= 1 ? tones.memberPcs : [];
+  const toneLabels = useMemo(() => {
+    if (!t || !tones) return {};
+    const out: Record<number, string> = {};
+    for (const iv of tones.members) out[(t.chord.root + iv) % 12] = DEGREE[iv] ?? String(iv);
+    return out;
+  }, [t, tones]);
   const avgLate = view.lateN ? Math.round(view.lateSum / view.lateN) : null;
   const tuneMode = !!spec?.song;
   const gridBars = useMemo(() => (spec?.song ? spec.song.bars.map((b) => ({ key: b.formIndex, chords: b.chords, section: b.section })) : []), [spec]);
@@ -309,17 +354,41 @@ export default function Drill() {
           <Chip>{spec.families.map((f) => FAMILY_LABEL[f] ?? f).join(' / ')}</Chip>
           <Chip>{STRICTNESS_LABEL[spec.strictness]}</Chip>
           <Chip>{spec.voiceLeading === 'strict' ? 'Voice leading on' : 'Any voicing in family'}</Chip>
-          <Chip>{spec.pacing.mode === 'free' ? 'Free time' : `${spec.pacing.bpm} bpm · ${spec.pacing.beatsPerChord} beats/chord`}</Chip>
+          <Chip>{spec.pacing.mode === 'free' ? 'Free time' : `${spec.pacing.beatsPerChord} beats/chord`}</Chip>
           {spec.ladder && <Chip>Speed ladder +{spec.ladder.up}/−{spec.ladder.down}</Chip>}
           {spec.band && <Chip>Band: {[spec.band.bass && 'bass', spec.band.drums && 'drums'].filter(Boolean).join(' + ')} · {spec.band.style}</Chip>}
           {spec.backing && <Chip>{spec.backing.kind === 'record' ? 'Your recording (stems)' : 'YouTube backing track'}{spec.backing.anchorSec !== undefined ? ' · auto-sync' : ''}</Chip>}
           {spec.speak && <Chip>Name it & play it (voice)</Chip>}
           {midi.inputMode === 'mic' && <Chip>Microphone input · graded at pitch-class level</Chip>}
         </div>
+        {spec.pacing.mode === 'timed' && (
+          <div className="card w-full max-w-md text-left space-y-4">
+            <MetronomePanel value={metro} onChange={setMetro} />
+            <div className="flex items-center gap-2">
+              <div className="label w-20 shrink-0">Chord ends</div>
+              <div className="flex gap-1 flex-1">
+                {([['onTime', 'with the click'], ['onCorrect', 'when I play it']] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    aria-pressed={(spec.pacing.advance ?? 'onTime') === mode}
+                    className={`flex-1 rounded-lg px-2.5 py-1 text-sm ${(spec.pacing.advance ?? 'onTime') === mode ? 'bg-accent/25 text-ink' : 'bg-panel-2 text-ink-dim hover:text-ink'}`}
+                    onClick={() => setSpec((prev) => (prev ? { ...prev, pacing: { ...prev.pacing, advance: mode } } : prev))}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+            <div className="text-xs text-ink-faint">
+              {(spec.pacing.advance ?? 'onTime') === 'onTime'
+                ? 'The drill moves on when the bar does, hit or miss.'
+                : 'The click keeps going and the chord comes round again until you play it right.'}
+              {' '}In time means within ±{spec.pacing.timingWindowMs ?? 120} ms of the beat.
+            </div>
+          </div>
+        )}
         <button className="btn btn-primary text-lg px-8 py-4" onClick={() => void start()}>Start</button>
         <div className="text-xs text-ink-faint max-w-sm">
           {midi.connected ? <>Listening on <span className="text-ink-dim">{midi.deviceName}</span>.</> : midi.supported ? <>No MIDI device yet — plug one in, or use the computer keyboard (<kbd>z</kbd>–<kbd>m</kbd>, <kbd>q</kbd>–<kbd>p</kbd>, <kbd>,</kbd>/<kbd>.</kbd> octave).</> : <>This browser has no Web MIDI (Safari). Use Chrome/Edge/Firefox, or the computer keyboard.</>}
-          <div className="mt-2">Space pause · → skip · h hint · p play it · −/+ tempo · sustain-pedal double-tap pause</div>
+          <div className="mt-2">Space pause · → skip · h hint · p play it · m metronome · −/= ±1 bpm · sustain-pedal double-tap pause</div>
         </div>
         <button className="text-ink-faint text-sm hover:text-ink" onClick={() => nav(-1)}>Back</button>
       </div>
@@ -330,15 +399,18 @@ export default function Drill() {
     <div className="min-h-screen flex flex-col select-none">
       {/* status bar */}
       <div className="px-4 pt-3 pb-2 flex items-center gap-4 text-xs text-ink-dim">
-        <div className="flex-1"><BeatPulse beats={beatsPerBar} current={view.beat.beat} countIn={view.beat.countIn} bar={view.beat.bar} /></div>
+        <div className="flex-1"><BeatPulse beats={beatsPerBar} current={view.beat.beat} countIn={view.beat.countIn} /></div>
       </div>
       <div className="px-4 flex items-center gap-3 text-xs text-ink-dim">
-        {spec.pacing.mode === 'timed' && <span className="font-medium text-ink">{view.bpm} bpm</span>}
+        {spec.pacing.mode === 'timed' && (
+          <button className="font-medium text-ink hover:text-accent tabular-nums" onClick={() => setMetroOpen(true)} title="Tempo and metronome (m)">{view.bpm} bpm ▾</button>
+        )}
         <span className="truncate">{spec.name}</span>
         <span className="ml-auto" />
-        <span className="text-good">✓ {view.ok}</span>
-        <span className="text-bad">✗ {view.miss}</span>
-        {avgLate !== null && <span title="average lateness of correct chords">⏱ {avgLate > 0 ? '+' : ''}{avgLate} ms</span>}
+        <span className="text-good" title="right notes, in time">✓ {view.clean}</span>
+        {view.offTime > 0 && <span className="text-warn" title="right notes, outside the timing window">⏱ {view.offTime}</span>}
+        <span className="text-bad" title="wrong notes or nothing played">✗ {view.wrong + view.blank}</span>
+        {avgLate !== null && <span title="median offset of correct chords">{avgLate > 0 ? '+' : ''}{avgLate} ms</span>}
         <button className="btn btn-ghost !py-1 !px-2" onClick={() => (run?.state === 'paused' ? run.resume() : run?.pause())}>{view.state === 'paused' ? 'Resume' : 'Pause'}</button>
       </div>
 
@@ -394,9 +466,10 @@ export default function Drill() {
           <div className="text-center text-sm text-ink-dim min-h-[3.5rem]">
             {t.pc.roman && spec.prompt !== 'roman' && <span className="mr-3 text-ink-faint">{t.pc.roman}</span>}
             <span>{FAMILY_LABEL[t.voicing.family] ?? t.voicing.family}</span>
-            {view.hint >= 1 && tones && <div className="mt-1 text-ink">Chord tones: {tones.memberPcs.map((p) => spellPc(p as PitchClass, 'flat')).join(' ')}</div>}
-            {view.hint >= 2 && <div className="text-accent">{t.voicing.label} → {t.voicing.notes.map((n) => noteName(n)).join(' ')}</div>}
-            {spec.speak && <div className={heard ? (heard.ok === null ? 'text-ink-dim' : heard.ok ? 'text-good' : 'text-bad') : 'text-ink-faint'}>🎤 {heard ? `“${heard.text}”${heard.ok === true ? ' ✓' : heard.ok === false ? ' ✗' : ''}` : 'say the chord name'}</div>}
+            {hintAsText && view.hint >= 1 && tones && <div className="mt-1 text-ink">Chord tones: {tones.memberPcs.map((p) => spellPc(p as PitchClass, 'flat')).join(' ')}</div>}
+            {hintAsText && view.hint >= 2 && <div className="text-accent">{t.voicing.label} → {t.voicing.notes.map((n) => noteName(n)).join(' ')}</div>}
+            {view.repeats > 0 && <div className="text-warn">Again — take {view.repeats + 1}</div>}
+            {spec.speak && <div className={heard ? (heard.ok === null ? 'text-ink-dim' : heard.ok ? 'text-good' : 'text-bad') : 'text-ink-faint'}>{heard ? `heard “${heard.text}”${heard.ok === true ? ' — yes' : heard.ok === false ? ' — no' : ''}` : 'say the chord name'}</div>}
             {view.verdict && <div className={view.verdict.ok ? 'text-good' : 'text-bad'}>{view.verdict.message}{view.latenessMs !== null && view.verdict.ok ? ` · ${view.latenessMs > 0 ? '+' : ''}${view.latenessMs} ms` : ''}</div>}
           </div>
         )}
@@ -408,12 +481,14 @@ export default function Drill() {
             {spec.song?.scan && pageUrl && <button className="text-xs text-ink-faint hover:text-ink mt-1" onClick={() => setShowPage((v) => !v)}>{showPage ? 'show grid' : 'show page'}</button>}
           </div>
         )}
-        <div className={`w-full ${tuneMode ? 'max-w-xl' : 'max-w-3xl'} transition-opacity`} style={{ opacity: showDiff || hintNotes.length || midi.held.length ? 1 : tuneMode ? 0 : 0.25, display: tuneMode && !(showDiff || hintNotes.length) ? 'none' : undefined }}>
+        <div className={`w-full ${tuneMode ? 'max-w-xl' : 'max-w-3xl'} transition-opacity`} style={{ opacity: showDiff || hintNotes.length || hintTones.length || midi.held.length ? 1 : tuneMode ? 0 : 0.25, display: tuneMode && !(showDiff || hintNotes.length || hintTones.length) ? 'none' : undefined }}>
           <Keyboard
             good={showDiff ? view.verdict!.correctNotes : []}
             bad={showDiff ? view.verdict!.wrongNotes : []}
             missed={showDiff ? view.verdict!.missedNotes : []}
             hint={hintNotes}
+            tones={hintTones}
+            toneLabels={toneLabels}
             held={showDiff ? [] : midi.held}
             labels
           />
@@ -425,27 +500,32 @@ export default function Drill() {
         <button className="btn btn-ghost" onClick={() => run?.hint()}>Hint {view.hint > 0 && <span className="text-accent">{view.hint}/3</span>}</button>
         <button className="btn btn-ghost" onClick={() => t && playVoicing(t.voicing.notes)}>Play it</button>
         {spec.pacing.mode === 'free' && <button className="btn btn-ghost" onClick={() => run?.skip()}>Skip</button>}
-        {spec.pacing.mode === 'timed' && (
-          <div className="flex items-center gap-1">
-            <button className="btn btn-ghost !px-3" onClick={() => run?.setBpm(Math.max(30, (run?.bpm ?? 60) - 4))}>−</button>
-            <button className="btn btn-ghost !px-3" onClick={() => run?.setBpm(Math.min(300, (run?.bpm ?? 60) + 4))}>+</button>
-          </div>
-        )}
+        {spec.pacing.mode === 'timed' && <button className="btn btn-ghost tabular-nums" onClick={() => setMetroOpen(true)}>Tempo {view.bpm}</button>}
         <span className="ml-auto text-xs text-ink-faint">{midi.inputMode === 'mic' ? 'microphone' : midi.connected ? midi.deviceName : 'computer keyboard'}{midi.sustain ? ' · pedal' : ''}</span>
         <button className="btn btn-danger" onClick={() => run?.end()}>End</button>
       </div>
 
-      {view.state === 'paused' && (
-        <div className="fixed inset-0 bg-bg/85 backdrop-blur flex items-center justify-center z-30">
-          <div className="card w-80 text-center space-y-3">
-            <div className="label">Paused</div>
-            <div className="text-2xl font-semibold">{view.ok} ✓ · {view.miss} ✗</div>
-            {avgLate !== null && <div className="text-ink-dim text-sm">avg {avgLate > 0 ? '+' : ''}{avgLate} ms</div>}
-            <div className="flex gap-2 justify-center">
-              {spec.pacing.mode === 'timed' && <button className="btn btn-ghost" onClick={() => run?.setBpm(Math.max(30, (run?.bpm ?? 60) - 8))}>Slower</button>}
-              <button className="btn btn-primary" onClick={() => run?.resume()}>Resume</button>
-              {spec.pacing.mode === 'timed' && <button className="btn btn-ghost" onClick={() => run?.setBpm(Math.min(300, (run?.bpm ?? 60) + 8))}>Faster</button>}
+      {metroOpen && view.state !== 'paused' && (
+        <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-bg/95" onClick={() => setMetroOpen(false)}>
+          <div className="card w-96 max-w-[96vw] space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="label">Metronome</div>
+              <button className="text-ink-faint hover:text-ink text-sm" onClick={() => setMetroOpen(false)}>close</button>
             </div>
+            <MetronomePanel value={metro} onChange={setMetro} showTimeSig={false} showCountIn={false} />
+            <div className="text-xs text-ink-faint">Also: <kbd>−</kbd>/<kbd>=</kbd> ±1 bpm · <kbd>_</kbd>/<kbd>+</kbd> ±5 · <kbd>m</kbd> opens this. Time signature and count-in are set before the run starts.</div>
+          </div>
+        </div>
+      )}
+
+      {view.state === 'paused' && (
+        <div className="fixed inset-0 bg-bg/95 flex items-center justify-center z-30">
+          <div className="card w-96 max-w-[92vw] text-center space-y-3">
+            <div className="label">Paused</div>
+            <div className="text-2xl font-semibold">{view.clean} ✓{view.offTime > 0 && <span className="text-warn"> · {view.offTime} ⏱</span>} · {view.wrong + view.blank} ✗</div>
+            {avgLate !== null && <div className="text-ink-dim text-sm">median {avgLate > 0 ? '+' : ''}{avgLate} ms</div>}
+            {spec.pacing.mode === 'timed' && <MetronomePanel value={metro} onChange={setMetro} showTimeSig={false} showCountIn={false} />}
+            <button className="btn btn-primary w-full" onClick={() => run?.resume()}>Resume</button>
             <button className="btn btn-danger w-full" onClick={() => run?.end()}>End block</button>
           </div>
         </div>
@@ -463,6 +543,9 @@ function Prompt({ t, spec, revealed, style }: { t: Target; spec: DrillSpec; reve
 function Chip({ children }: { children: React.ReactNode }) {
   return <span className="rounded-full bg-panel-2 px-3 py-1">{children}</span>;
 }
+
+/** Interval from the root → the degree name a player reads. */
+const DEGREE: Record<number, string> = { 0: '1', 1: 'b9', 2: '9', 3: 'b3', 4: '3', 5: '11', 6: 'b5', 7: '5', 8: 'b13', 9: '13', 10: 'b7', 11: '7' };
 
 function noteName(n: number): string {
   const names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];

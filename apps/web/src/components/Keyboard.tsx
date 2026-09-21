@@ -14,6 +14,10 @@ export interface KeyboardProps {
   held?: number[];
   /** target notes to show as a hint (amber) */
   hint?: number[];
+  /** pitch classes (0-11) to outline everywhere they appear — the first rung of the hint ladder */
+  tones?: number[];
+  /** degree label per pitch class, e.g. { 2: '9', 5: 'b7' }, drawn on outlined keys */
+  toneLabels?: Record<number, string>;
   labels?: boolean;
   className?: string;
   onNote?: (note: number, down: boolean) => void;
@@ -38,13 +42,16 @@ export function Keyboard(p: KeyboardProps) {
     if (p.held?.includes(n)) return isBlack ? '#6b7d92' : '#c9d3df';
     return isBlack ? '#101318' : '#f1eee7';
   };
-  const stroke = (n: number) => (p.missed?.includes(n) ? 'var(--color-accent)' : '#2a323d');
+  const isTone = (n: number) => !!p.tones?.includes(n % 12) && !p.hint?.includes(n) && !p.good?.includes(n) && !p.bad?.includes(n);
+  const stroke = (n: number) => (p.missed?.includes(n) ? 'var(--color-accent)' : isTone(n) ? 'var(--color-accent)' : '#2a323d');
+  const dash = (n: number) => (isTone(n) ? '3 2' : undefined);
   const width = whites.length * W;
   return (
     <svg viewBox={`0 0 ${width} ${H}`} className={p.className ?? 'w-full'} style={{ maxHeight: 180 }} role="img" aria-label="keyboard">
       {whites.map((n) => (
         <g key={n} onPointerDown={() => p.onNote?.(n, true)} onPointerUp={() => p.onNote?.(n, false)} onPointerLeave={() => p.onNote?.(n, false)}>
-          <rect x={xOfWhite.get(n)} y={0} width={W - 1} height={H} rx={3} fill={colour(n, false)} stroke={stroke(n)} strokeWidth={p.missed?.includes(n) ? 3 : 1} />
+          <rect x={xOfWhite.get(n)} y={0} width={W - 1} height={H} rx={3} fill={colour(n, false)} stroke={stroke(n)} strokeDasharray={dash(n)} strokeWidth={p.missed?.includes(n) || isTone(n) ? 3 : 1} />
+          {isTone(n) && p.toneLabels?.[n % 12] && <text x={xOfWhite.get(n)! + W / 2 - 0.5} y={H - 30} fontSize={9} textAnchor="middle" fill="var(--color-accent)">{p.toneLabels[n % 12]}</text>}
           {p.labels && n % 12 === 0 && <text x={xOfWhite.get(n)! + W / 2 - 0.5} y={H - 6} fontSize={8} textAnchor="middle" fill="#5b6570">C{Math.floor(n / 12) - 1}</text>}
           {p.missed?.includes(n) && <text x={xOfWhite.get(n)! + W / 2 - 0.5} y={H - 18} fontSize={9} textAnchor="middle" fill="var(--color-accent)">{NAMES[n % 12]}</text>}
         </g>
@@ -54,7 +61,8 @@ export function Keyboard(p: KeyboardProps) {
         const x = (xOfWhite.get(leftWhite) ?? 0) + W - BW / 2 - 0.5;
         return (
           <g key={n} onPointerDown={() => p.onNote?.(n, true)} onPointerUp={() => p.onNote?.(n, false)} onPointerLeave={() => p.onNote?.(n, false)}>
-            <rect x={x} y={0} width={BW} height={BH} rx={2} fill={colour(n, true)} stroke={stroke(n)} strokeWidth={p.missed?.includes(n) ? 3 : 1} />
+            <rect x={x} y={0} width={BW} height={BH} rx={2} fill={colour(n, true)} stroke={stroke(n)} strokeDasharray={dash(n)} strokeWidth={p.missed?.includes(n) || isTone(n) ? 2.5 : 1} />
+            {isTone(n) && p.toneLabels?.[n % 12] && <text x={x + BW / 2} y={BH - 18} fontSize={7} textAnchor="middle" fill="var(--color-accent)">{p.toneLabels[n % 12]}</text>}
             {p.missed?.includes(n) && <text x={x + BW / 2} y={BH - 6} fontSize={8} textAnchor="middle" fill="var(--color-accent)">{NAMES[n % 12]}</text>}
           </g>
         );

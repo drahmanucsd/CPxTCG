@@ -22,6 +22,17 @@ export type GeneratorSpec =
 export interface Pacing {
   mode: 'free' | 'timed';
   bpm: number;
+  /**
+   * What ends a chord.
+   *   'onTime'    — the beat grid does: when the window closes the drill moves on, hit or miss.
+   *   'onCorrect' — you do: the chord repeats (click still running) until you play it right.
+   * Defaults: timed → 'onTime', free → 'onCorrect'.
+   */
+  advance?: 'onTime' | 'onCorrect';
+  /** ± ms around the chord's downbeat that still counts as "in time". Default 120. */
+  timingWindowMs?: number;
+  /** 'onCorrect': give up and move on after this many repeats. Default 8. */
+  maxRepeats?: number;
   /** beats per chord; ignored when the generator provides its own beats (custom/blues/progression) unless `overrideBeats` */
   beatsPerChord: number;
   overrideBeats?: boolean;
@@ -103,9 +114,18 @@ export interface TargetResult {
   roman?: string;
   family: string;
   label: string;
+  /** the notes were right (regardless of when) */
   ok: boolean;
   met: Strictness | null;
   latenessMs: number | null;
+  /** where the attack landed relative to the chord's downbeat; null in free time or when nothing was played */
+  timing: 'early' | 'onTime' | 'late' | null;
+  /** the authoritative four-way classification — see docs/06-review-ux.md */
+  outcome: Outcome;
+  /** right notes, but a hint was open when they landed */
+  assisted: boolean;
+  /** extra windows the chord took in 'onCorrect' mode (0 = got it first time round) */
+  repeats: number;
   hints: number;
   attempts: number;
   message: string;
@@ -116,16 +136,43 @@ export interface TargetResult {
   spoken?: { heard: string; ok: boolean };
 }
 
+/**
+ * Clean  — right notes, in the window, unaided.
+ * Timing — right notes, outside the window (early or late). You know it; you can't place it.
+ * Wrong  — played something, it wasn't the chord.
+ * Blank  — nothing playable arrived.
+ */
+export type Outcome = 'clean' | 'timing' | 'wrong' | 'blank';
+
+export interface TimingStats {
+  /** median signed offset in ms — a big median with a small spread is input latency, not playing */
+  medianMs: number;
+  /** interquartile range in ms — the actual consistency number */
+  spreadMs: number;
+  onTime: number;
+  early: number;
+  late: number;
+  /** every signed offset, for the strip plot */
+  offsets: number[];
+}
+
 export interface DrillSummary {
   specId: string;
   startedAt: number;
   endedAt: number;
   results: TargetResult[];
   total: number;
+  /** chords whose notes were right, on time or not */
   correct: number;
+  /** right notes, in the window, no hint — the number that matters */
+  clean: number;
+  outcomes: Record<Outcome, number>;
+  timing: TimingStats | null;
   avgLatenessMs: number | null;
+  startBpm: number;
   finalBpm: number;
   hintsUsed: number;
+  assisted: number;
 }
 
 export type DrillState = 'idle' | 'countIn' | 'running' | 'paused' | 'ended';
@@ -137,6 +184,8 @@ export interface DrillEvents extends Record<string, unknown> {
   hint: { target: Target; level: number };
   tempo: { bpm: number };
   pass: { pass: number; correct: number; total: number };
+  /** 'onCorrect' mode: the current chord is coming round again */
+  repeat: { target: Target; repeats: number };
   spoken: { target: Target; heard: string; ok: boolean };
   end: { summary: DrillSummary };
 }
@@ -220,6 +269,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
   private endTimer: unknown = null;
   private lastPass = 1;
   private finished = false;
+  private readonly startBpm: number;
 
   constructor(opts: DrillRunnerOptions) {
     super();
@@ -234,11 +284,30 @@ export class DrillRunner extends Emitter<DrillEvents> {
     this._setInterval = opts.setInterval ?? ((fn, ms) => setInterval(fn, ms));
     this._clearInterval = opts.clearInterval ?? ((h) => clearInterval(h as number));
     this.bpm = opts.spec.pacing.bpm;
+    this.startBpm = this.bpm;
     this.source = makeSource(opts.spec, this.rng, opts.weight);
     if (this.spec.pacing.mode === 'timed' && !this.transport) throw new Error('timed drills need a transport');
   }
 
   get currentTarget(): Target | undefined { return this.targets[this.current]; }
+
+  /** What ends a chord: the grid, or getting it right. */
+  get advanceMode(): 'onTime' | 'onCorrect' {
+    return this.spec.pacing.advance ?? (this.spec.pacing.mode === 'timed' ? 'onTime' : 'onCorrect');
+  }
+
+  /** ± ms around the downbeat that counts as in time, never more than half the chord. */
+  private timingWindow(t: Target): number {
+    const w = this.spec.pacing.timingWindowMs ?? 120;
+    if (this.spec.pacing.mode !== 'timed') return w;
+    return Math.min(w, (t.beats * 60_000) / this.bpm / 2);
+  }
+
+  private classifyTiming(t: Target, latenessMs: number | null): 'early' | 'onTime' | 'late' | null {
+    if (latenessMs === null) return null;
+    const w = this.timingWindow(t);
+    return Math.abs(latenessMs) <= w ? 'onTime' : latenessMs < 0 ? 'early' : 'late';
+  }
 
   /** The chord sounding on a transport beat (timed mode), with its neighbours — for the rhythm section. */
   chordAtBeat(beatIndex: number): { chord: ChordSymbol; next: ChordSymbol | null; beatInChord: number; chordBeats: number; target: Target } | null {
@@ -383,7 +452,8 @@ export class DrillRunner extends Emitter<DrillEvents> {
     if (!r) {
       r = {
         index: t.index, chordText: formatChord(t.chord), chord: t.chord, family: t.voicing.family, label: t.voicing.label, ok: false, met: null,
-        latenessMs: null, hints: 0, attempts: 0, message: '', playedNotes: [], targetNotes: t.voicing.notes, bpm: this.bpm, pass: t.pass,
+        latenessMs: null, timing: null, outcome: 'blank', assisted: false, repeats: 0,
+        hints: 0, attempts: 0, message: '', playedNotes: [], targetNotes: t.voicing.notes, bpm: this.bpm, pass: t.pass,
       };
       if (t.pc.roman) r.roman = t.pc.roman;
       this.results.set(t.index, r);
@@ -408,6 +478,14 @@ export class DrillRunner extends Emitter<DrillEvents> {
     const r = this.resultFor(t);
     if (attempt) { r.attempts++; r.playedNotes = attempt.notes; }
     r.ok = verdict.ok; r.met = verdict.met; r.message = verdict.message; r.latenessMs = latenessMs; r.bpm = this.bpm;
+    r.timing = this.classifyTiming(t, latenessMs);
+    if (verdict.ok) {
+      r.assisted = r.hints > 0;
+      // free time has no grid, so there is nothing to be late for
+      r.outcome = r.timing === null || r.timing === 'onTime' ? 'clean' : 'timing';
+    } else {
+      r.outcome = r.attempts > 0 ? 'wrong' : 'blank';
+    }
     this.emit('verdict', { target: t, verdict, attempt, latenessMs, final });
   }
 
@@ -424,12 +502,13 @@ export class DrillRunner extends Emitter<DrillEvents> {
     }
     // timed: attribute the attack to a chord window
     const attack = a.attackTime - this.latency;
-    const early = (this.spec.earlyMs ?? 150) / 1000;
+    const early = Math.max(this.spec.earlyMs ?? 150, this.spec.pacing.timingWindowMs ?? 120) / 1000;
     const t = this.targets.find((x) => x.dueTime !== undefined && attack >= x.dueTime - early && attack < x.windowEnd!);
     if (!t) return;
     const r = this.resultFor(t);
     if (r.ok) return; // already nailed it; ignore re-strikes
     const v = this.grade(t, a.notes);
+    // in 'onCorrect' the chord repeats, so lateness is measured inside the current repetition
     const lateness = Math.round((attack - t.dueTime!) * 1000);
     this.record(t, v, a, lateness, v.ok);
   }
@@ -458,6 +537,14 @@ export class DrillRunner extends Emitter<DrillEvents> {
       if (!r.ok) {
         if (r.attempts === 0) this.record(t, { ok: false, met: null, diagnosis: ['nothingPlayed'], missingPcs: [], extraPcs: [], correctNotes: [], wrongNotes: [], missedNotes: t.voicing.notes, message: 'Missed' }, null, null, true);
         else this.emit('verdict', { target: t, verdict: { ok: false, met: r.met, diagnosis: [], missingPcs: [], extraPcs: [], correctNotes: [], wrongNotes: [], missedNotes: [], message: r.message }, attempt: null, latenessMs: r.latenessMs, final: true });
+        // "wait until you get it": keep the click running and come round again on the same chord
+        if (this.advanceMode === 'onCorrect' && r.repeats < (this.spec.pacing.maxRepeats ?? 8)) {
+          r.repeats++;
+          this.repeatCurrent(t);
+          this.emitTarget();
+          return;
+        }
+        r.outcome = r.attempts > 0 ? 'wrong' : 'blank';
       }
       this.current++;
       if (this.spec.length.reps && this.current >= this.spec.length.reps) { this.finish(); return; }
@@ -467,6 +554,22 @@ export class DrillRunner extends Emitter<DrillEvents> {
     }
     const t = this.currentTarget;
     if (t && t.beatIndex === index) this.emitTarget();
+  }
+
+  /** 'onCorrect' timed mode: slide this chord and every later one back one chord-length. */
+  private repeatCurrent(t: Target): void {
+    const shift = t.beats;
+    for (let i = this.targets.indexOf(t); i < this.targets.length; i++) {
+      const x = this.targets[i]!;
+      if (x.beatIndex !== undefined) x.beatIndex += shift;
+    }
+    this.nextBeat += shift;
+    // re-issue this chord: clear the failed verdict so the UI shows a fresh prompt, keep the counts
+    const r = this.resultFor(t);
+    r.ok = false; r.met = null; r.timing = null; r.latenessMs = null; r.outcome = 'blank'; r.message = '';
+    this.emittedIndex = -1;
+    this.assignBeats();
+    this.emit('repeat', { target: t, repeats: r.repeats });
   }
 
   private reportPass(): void {
@@ -496,15 +599,35 @@ export class DrillRunner extends Emitter<DrillEvents> {
     const results = this.resultsSoFar.filter((r) => r.attempts > 0 || r.index < this.current);
     const graded = results.filter((r) => r.ok || r.attempts > 0 || r.index < this.current);
     const lat = graded.filter((r) => r.ok && r.latenessMs !== null).map((r) => r.latenessMs!);
+    const outcomes: Record<Outcome, number> = { clean: 0, timing: 0, wrong: 0, blank: 0 };
+    for (const r of graded) outcomes[r.outcome]++;
     const summary: DrillSummary = {
       specId: this.spec.id, startedAt: this.startedAt, endedAt: this.clock.now(), results: graded,
       total: graded.length, correct: graded.filter((r) => r.ok).length,
+      clean: outcomes.clean, outcomes, timing: timingStats(graded),
       avgLatenessMs: lat.length ? Math.round(lat.reduce((a, b) => a + b, 0) / lat.length) : null,
-      finalBpm: this.bpm, hintsUsed: graded.reduce((a, r) => a + r.hints, 0),
+      startBpm: this.startBpm, finalBpm: this.bpm, hintsUsed: graded.reduce((a, r) => a + r.hints, 0),
+      assisted: graded.filter((r) => r.assisted).length,
     };
     this.setState('ended');
     this.emit('end', { summary });
   }
+}
+
+/** Median and IQR of the signed offsets of every chord whose notes were right. */
+export function timingStats(results: TargetResult[]): TimingStats | null {
+  const offsets = results.filter((r) => r.ok && r.latenessMs !== null).map((r) => r.latenessMs!);
+  if (!offsets.length) return null;
+  const sorted = [...offsets].sort((a, b) => a - b);
+  const q = (f: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round(f * (sorted.length - 1))))]!;
+  return {
+    medianMs: q(0.5),
+    spreadMs: q(0.75) - q(0.25),
+    onTime: results.filter((r) => r.timing === 'onTime').length,
+    early: results.filter((r) => r.timing === 'early').length,
+    late: results.filter((r) => r.timing === 'late').length,
+    offsets,
+  };
 }
 
 function rank(v: Verdict): number { return v.met === null ? -1 : STRICTNESS_ORDER.length - STRICTNESS_ORDER.indexOf(v.met); }

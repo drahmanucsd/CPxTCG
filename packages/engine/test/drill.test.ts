@@ -139,6 +139,68 @@ describe('DrillRunner — timed mode', () => {
     timers.advance(20);
     expect(tempos).toEqual([130, 110]);
   });
+  it('right notes outside the window are a timing outcome, not a pass', () => {
+    const { clock, timers, transport } = makeTransport(120, 0);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = {
+      ...PRESET_BY_ID['rootless-iiVI-4ths-120']!, ladder: undefined, length: { reps: 2 },
+      pacing: { mode: 'timed', bpm: 120, beatsPerChord: 4, countInBars: 0, timeSig: { beats: 4, unit: 4 }, advance: 'onTime', timingWindowMs: 120 },
+    };
+    const runner = new DrillRunner({ spec, clock, capture, transport, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    let cur: Target | null = null;
+    let summary: import('../src/drill.js').DrillSummary | null = null;
+    runner.on('target', (e) => { cur = e.target; });
+    runner.on('end', (e) => { summary = e.summary; });
+    runner.start();
+    // chord 1: right notes, 60 ms late — inside ±120 ms
+    const first = cur!;
+    play(capture, first.voicing.notes, transport.beatTime(first.beatIndex!) + 0.06, timers, clock);
+    timers.advance(transport.beatTime(first.beatIndex! + 4) + 0.01 - clock.now());
+    // chord 2: right notes, 300 ms late — outside the window
+    const second = cur!;
+    play(capture, second.voicing.notes, transport.beatTime(second.beatIndex!) + 0.3, timers, clock);
+    timers.advance(5);
+    expect(summary).not.toBeNull();
+    const [a, b] = summary!.results;
+    expect(a!.ok).toBe(true);
+    expect(a!.timing).toBe('onTime');
+    expect(a!.outcome).toBe('clean');
+    expect(b!.ok).toBe(true);           // the notes were right
+    expect(b!.timing).toBe('late');
+    expect(b!.outcome).toBe('timing');  // but it does not count as clean
+    expect(summary!.clean).toBe(1);
+    expect(summary!.outcomes).toMatchObject({ clean: 1, timing: 1, wrong: 0, blank: 0 });
+    expect(summary!.timing!.late).toBe(1);
+    expect(summary!.timing!.offsets).toEqual([60, 300]);
+  });
+  it("advance 'onCorrect' repeats the chord until it is played", () => {
+    const { clock, timers, transport } = makeTransport(120, 0);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = {
+      ...PRESET_BY_ID['rootless-iiVI-4ths-120']!, ladder: undefined, length: { reps: 2 },
+      pacing: { mode: 'timed', bpm: 120, beatsPerChord: 4, countInBars: 0, timeSig: { beats: 4, unit: 4 }, advance: 'onCorrect', maxRepeats: 8 },
+    };
+    const runner = new DrillRunner({ spec, clock, capture, transport, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    const chords: string[] = [];
+    const repeats: number[] = [];
+    runner.on('target', (e) => chords.push(formatChord(e.target.chord, 'plain')));
+    runner.on('repeat', (e) => repeats.push(e.repeats));
+    runner.start();
+    const first = runner.currentTarget!;
+    // sit out two whole windows without playing: the same chord comes round again, twice
+    timers.advance(transport.beatTime(first.beatIndex! + 8) + 0.01 - clock.now());
+    expect(repeats).toEqual([1, 2]);
+    expect(runner.currentTarget!.index).toBe(first.index);
+    expect(new Set(chords).size).toBe(1);
+    // now play it: the drill moves on to the next chord
+    play(capture, first.voicing.notes, clock.now() + 0.01, timers, clock);
+    timers.advance(transport.beatTime(first.beatIndex! + 4) + 0.02 - clock.now());
+    expect(runner.currentTarget!.index).toBe(first.index + 1);
+    const r = runner.resultsSoFar[0]!;
+    expect(r.repeats).toBe(2);
+    expect(r.ok).toBe(true);
+    runner.end();
+  });
   it('every preset constructs and yields a first target', () => {
     for (const p of PRESETS) {
       const { clock, transport } = makeTransport(p.pacing.bpm || 100, 0);

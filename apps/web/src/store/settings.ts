@@ -11,6 +11,8 @@ export interface Settings {
   pianoVolume: number;
   visualPulse: boolean;
   speakPrompts: boolean;
+  /** where hints appear: as text under the chord, on the keyboard, or both */
+  hintStyle: 'text' | 'keyboard' | 'both';
   level: 'learning' | 'tunes' | 'fluency';
   onboarded: boolean;
   /** chosen YouTube backing track per tune id */
@@ -22,7 +24,7 @@ export const useSettings = create<Settings>()(
   persist(
     (set) => ({
       displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
-      visualPulse: true, speakPrompts: false, level: 'fluency', onboarded: false, backingBySong: {},
+      visualPulse: true, speakPrompts: false, hintStyle: 'both', level: 'fluency', onboarded: false, backingBySong: {},
       set: (patch) => set(patch),
     }),
     { name: 'shed.settings', partialize: (s) => Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v !== 'function')) as Partial<Settings> },

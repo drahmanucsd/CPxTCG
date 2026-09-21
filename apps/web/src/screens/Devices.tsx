@@ -64,6 +64,14 @@ export default function Devices() {
         <label className="flex items-center justify-between text-sm">Chord symbols
           <select className="select" value={settings.displayStyle} onChange={(e) => settings.set({ displayStyle: e.target.value as 'realbook' | 'plain' })}><option value="realbook">Real Book (Δ − ø °)</option><option value="plain">Plain (maj7 m7 m7b5 dim7)</option></select>
         </label>
+        <label className="flex items-center justify-between text-sm">Hints
+          <select className="select" value={settings.hintStyle} onChange={(e) => settings.set({ hintStyle: e.target.value as 'text' | 'keyboard' | 'both' })}>
+            <option value="both">On the keyboard and as text</option>
+            <option value="keyboard">On the keyboard only</option>
+            <option value="text">As text only</option>
+          </select>
+        </label>
+        <div className="text-xs text-ink-dim">Hint 1 outlines the chord tones on the keyboard with their degrees, hint 2 shows the actual voicing, hint 3 plays it.</div>
         <label className="flex items-center justify-between text-sm">Speak chord names (hands-free)<input type="checkbox" checked={settings.speakPrompts} onChange={(e) => settings.set({ speakPrompts: e.target.checked })} /></label>
         <div className="text-xs text-ink-dim">Voice input (say the chord name, "next", "slower"…): {speechSupported() ? 'available in this browser — enable per drill ("Name it & play it")' : 'not available in this browser (Chrome/Edge have it)'}</div>
       </section>

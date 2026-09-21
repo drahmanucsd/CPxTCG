@@ -121,6 +121,19 @@ export const FAMILIES: FamilyDef[] = [
     box: { lowestMin: MIDI.C3, lowestMax: MIDI.C4, top: MIDI.C5 }, maxSpan: 12,
   },
   {
+    id: 'root37', name: 'RH root, LH 3-7', short: 'Root + 3-7', hand: 'both', group: 'basic',
+    description: 'Left hand plays the guide tones (3rd and 7th); right hand plays the root on its own. The first two-hand setup: the LH learns the voice leading while the RH only has to find the key.',
+    templates: {
+      maj7: ['3 7 | 1', '7 3 | 1'], maj6: ['3 6 | 1', '6 3 | 1'], min7: ['b3 b7 | 1', 'b7 b3 | 1'],
+      min6: ['b3 6 | 1', '6 b3 | 1'], minmaj7: ['b3 7 | 1', '7 b3 | 1'],
+      dom7: ['3 b7 | 1', 'b7 3 | 1'], dom7sus: ['4 b7 | 1', 'b7 4 | 1'], alt: ['3 b7 | 1', 'b7 3 | 1'],
+      halfdim: ['b3 b7 | 1', 'b7 b3 | 1'], dim7: ['b3 bb7 | 1', 'bb7 b3 | 1'], aug7: ['3 b7 | 1', 'b7 3 | 1'],
+      maj: ['3 5 | 1'], min: ['b3 5 | 1'],
+    },
+    box: EITHER_BOX, leftBox: { lowestMin: MIDI.C3, lowestMax: MIDI.C4, top: MIDI.C5 },
+    rightBox: { lowestMin: MIDI.C4, lowestMax: MIDI.C5 + 2, top: MIDI.C6 }, maxSpan: 12,
+  },
+  {
     id: 'rootlessA', name: 'Rootless A form', short: 'Rootless A', hand: 'LH', group: 'rootless',
     description: '3rd on the bottom: 3-5-7-9 (maj/min), 3-13-7-9 (dom). Bill Evans / Wynton Kelly LH.',
     templates: {

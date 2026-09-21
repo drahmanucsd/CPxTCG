@@ -1,9 +1,45 @@
 import type { DrillSpec } from './drill.js';
 
-const timed = (bpm: number, beatsPerChord = 4): DrillSpec['pacing'] => ({ mode: 'timed', bpm, beatsPerChord, countInBars: 1, timeSig: { beats: 4, unit: 4 } });
-const free: DrillSpec['pacing'] = { mode: 'free', bpm: 0, beatsPerChord: 4, countInBars: 0, timeSig: { beats: 4, unit: 4 }, holdMs: 350 };
+const timed = (bpm: number, beatsPerChord = 4): DrillSpec['pacing'] => ({ mode: 'timed', bpm, beatsPerChord, countInBars: 1, timeSig: { beats: 4, unit: 4 }, advance: 'onTime', timingWindowMs: 120 });
+/** Timed, but the chord comes round again until you play it. See docs/06-review-ux.md. */
+const untilRight = (bpm: number, beatsPerChord = 4): DrillSpec['pacing'] => ({ ...timed(bpm, beatsPerChord), advance: 'onCorrect', maxRepeats: 8 });
+const free: DrillSpec['pacing'] = { mode: 'free', bpm: 0, beatsPerChord: 4, countInBars: 0, timeSig: { beats: 4, unit: 4 }, advance: 'onCorrect', holdMs: 350 };
+
+/**
+ * The MVP ladder (docs/08-mvp.md): three voicing setups × two exercises, all twelve keys, in time.
+ * Everything below these is extra.
+ */
+const RUNGS = [
+  { n: 1, id: 'root37', families: ['root37'], label: 'RH root + LH 3-7', bpm: 80, suffixes: ['maj7', 'm7', '7'] },
+  { n: 2, id: 'guide', families: ['guide'], label: 'LH 3-7', bpm: 100, suffixes: ['maj7', 'm7', '7', 'm7b5'] },
+  { n: 3, id: 'rootless', families: ['rootlessA', 'rootlessB'], label: 'Rootless A/B', bpm: 120, suffixes: ['maj7', 'm7', '7', 'm7b5', 'dim7', '6', 'm6'] },
+] as const;
+
+const LADDER: DrillSpec[] = RUNGS.flatMap((r) => [
+  {
+    id: `rung${r.n}-learn`, name: `${r.n}. ${r.label} · learn it`, description: `No clock. The chord waits until you play it. ii-V-I round the cycle of fourths.`,
+    generator: { kind: 'iiVI', order: 'fourths' }, families: [...r.families], strictness: 'shape', voiceLeading: 'strict',
+    pacing: free, lookAhead: 'always', length: { passes: 1 }, tags: ['ladder', `rung${r.n}`],
+  },
+  {
+    id: `rung${r.n}-iiVI`, name: `${r.n}. ${r.label} · ii-V-I, 12 keys`, description: `In time, cycle of fourths, four beats a chord. The tempo goes up when you're clean.`,
+    generator: { kind: 'iiVI', order: 'fourths' }, families: [...r.families], strictness: 'shape', voiceLeading: 'strict',
+    pacing: timed(r.bpm, 4), lookAhead: 'always', length: { passes: 1 }, ladder: { up: 4, down: 6, min: 50, max: 240 }, tags: ['ladder', `rung${r.n}`],
+  },
+  {
+    id: `rung${r.n}-random`, name: `${r.n}. ${r.label} · random chords, 12 keys`, description: `Any chord, any key, that voicing, in time. Weak spots come round more often.`,
+    generator: { kind: 'random', suffixes: [...r.suffixes], smart: true }, families: [...r.families], strictness: 'shape', voiceLeading: 'strict',
+    pacing: timed(Math.round(r.bpm * 0.8), 4), lookAhead: 'lastBeat', length: { minutes: 4 }, ladder: { up: 4, down: 6, min: 50, max: 240 }, tags: ['ladder', `rung${r.n}`],
+  },
+  {
+    id: `rung${r.n}-untilRight`, name: `${r.n}. ${r.label} · until you get it`, description: `The click keeps going; the chord repeats until it's right. Shows you what you actually don't know.`,
+    generator: { kind: 'iiVI', order: 'random' }, families: [...r.families], strictness: 'shape', voiceLeading: 'strict',
+    pacing: untilRight(Math.round(r.bpm * 0.9), 4), lookAhead: 'never', length: { passes: 1 }, tags: ['ladder', `rung${r.n}`],
+  },
+]);
 
 export const PRESETS: DrillSpec[] = [
+  ...LADDER,
   {
     id: 'learn-rootless-iiVI', name: 'Learn: rootless ii-V-I', description: 'One key at a time, no clock. See the voicing when you need it.',
     generator: { kind: 'iiVI', order: 'fourths' }, families: ['rootlessA', 'rootlessB'], strictness: 'shape', voiceLeading: 'strict',
