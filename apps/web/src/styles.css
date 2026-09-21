@@ -12,7 +12,7 @@
   --color-good: #3ddc84;
   --color-bad: #ff5c5c;
   --color-warn: #ffb547;
-  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
 html, body, #root { height: 100%; }
@@ -22,14 +22,14 @@ body { background: var(--color-bg); color: var(--color-ink); font-family: var(--
 .chord-symbol { font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .chord-symbol sup { font-size: 0.5em; vertical-align: 0.6em; margin-left: 0.04em; }
 
-@keyframes flash-good { 0% { color: var(--color-good); transform: scale(1.04); } 100% { color: var(--color-ink); transform: scale(1); } }
-@keyframes flash-bad { 0% { color: var(--color-bad); transform: translateX(-4px); } 30% { transform: translateX(4px); } 100% { color: var(--color-ink); transform: translateX(0); } }
-.flash-good { animation: flash-good 0.6s ease-out; }
+/* Right/wrong has to register in peripheral vision, so the colour flash stays. No movement:
+   the chord is the thing you are reading, and a scaling or shaking target is harder to read. */
+@keyframes flash-good { 0% { color: var(--color-good); } 100% { color: var(--color-ink); } }
+@keyframes flash-bad { 0% { color: var(--color-bad); } 100% { color: var(--color-ink); } }
+.flash-good { animation: flash-good 0.5s ease-out; }
 .flash-bad { animation: flash-bad 0.5s ease-out; }
-@keyframes pulse-beat { 0% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0.15; transform: scaleY(0.4); } }
-.pulse-beat { animation: pulse-beat 0.45s ease-out; transform-origin: top; }
 
-.btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition active:scale-[0.98] disabled:opacity-40 disabled:pointer-events-none; }
+.btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors disabled:opacity-40 disabled:pointer-events-none; }
 .btn-primary { @apply bg-accent text-bg hover:brightness-110; }
 .btn-ghost { @apply bg-panel-2 text-ink hover:bg-line; }
 .btn-danger { @apply bg-bad/15 text-bad hover:bg-bad/25; }

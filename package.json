@@ -2,7 +2,8 @@
   "name": "shed",
   "private": true,
   "version": "0.1.0",
-  "description": "Shed — a jazz piano practice app",
+  "type": "module",
+  "description": "Shed \u2014 a jazz piano practice app",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "pnpm --filter @shed/web dev",
@@ -20,6 +21,7 @@
     "@types/node": "^22.15.0",
     "@vitest/coverage-v8": "^3.2.0",
     "eslint": "^9.30.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "tsx": "^4.20.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.35.0",

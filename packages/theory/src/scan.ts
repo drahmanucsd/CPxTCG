@@ -13,7 +13,7 @@ export interface ScanLayout { systems: Array<{ box: Rect; bars: ScannedBar[] }>;
 /** Fix common OCR confusions before parsing: O→0? no — chord text: l→1? We normalise glyphs, not digits. */
 export function normalizeOcrChord(t: string): string {
   return t
-    .replace(/[|\[\]{}]/g, '')
+    .replace(/[|[\]{}]/g, '')
     .replace(/[’'`´]/g, '')
     .replace(/^([A-G])[bB]/, (m, r) => `${r}b`)          // "Eb" read as "EB"
     .replace(/^([A-G])ь/, '$1b')

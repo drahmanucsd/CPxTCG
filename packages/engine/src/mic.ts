@@ -7,7 +7,6 @@
  * `pickNotes` later without touching the rest.
  */
 import { type Clock, Emitter } from './clock.js';
-import type { NoteEvent } from './capture.js';
 import type { MidiDeviceInfo, MidiSource, MidiSourceEvents } from './midi.js';
 
 export interface Peak { freq: number; mag: number; midi: number; cents: number }

@@ -14,7 +14,7 @@ export function BackingTracks({ songId, title, onChoose }: { songId: string; tit
   const [manual, setManual] = useState('');
   const query = `"${title}" backing track`;
 
-  useEffect(() => { onChoose(chosen); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [chosen?.videoId]);
+  useEffect(() => { onChoose(chosen); }, [chosen?.videoId]);
 
   const search = async () => {
     setState('loading');
@@ -26,9 +26,9 @@ export function BackingTracks({ songId, title, onChoose }: { songId: string; tit
       setResults(data.items); setState('idle');
     } catch { setState('error'); }
   };
-  useEffect(() => { if (!chosen) void search(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [songId]);
+  useEffect(() => { if (!chosen) void search(); }, [songId]);
   // remember a curated pick so the tune page never searches again
-  useEffect(() => { if (curated && !settings.backingBySong[songId]) settings.set({ backingBySong: { ...settings.backingBySong, [songId]: { videoId: curated.videoId, title: curated.title, bpm: curated.bpm, anchorSec: curated.anchorSec, verified: curated.verified, tuneTitle: title } } }); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [songId]);
+  useEffect(() => { if (curated && !settings.backingBySong[songId]) settings.set({ backingBySong: { ...settings.backingBySong, [songId]: { videoId: curated.videoId, title: curated.title, bpm: curated.bpm, anchorSec: curated.anchorSec, verified: curated.verified, tuneTitle: title } } }); }, [songId]);
 
   const pick = (r: { videoId: string; title: string }) => {
     const bpm = /(\d{2,3})\s*bpm/i.exec(r.title)?.[1];

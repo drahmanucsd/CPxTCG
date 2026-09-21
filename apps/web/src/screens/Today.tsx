@@ -58,7 +58,7 @@ export default function Today() {
       <div className="flex items-end justify-between">
         <div>
           <div className="label">Today</div>
-          <h1 className="text-3xl font-semibold tracking-tight">{plan.length} blocks · ~{plan.length * 6} min</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">{plan.length} blocks</h1>
         </div>
         <button className="btn btn-primary text-base px-6 py-3" onClick={() => void startBlock(plan[0]!)}>Start</button>
       </div>

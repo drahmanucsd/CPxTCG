@@ -17,7 +17,7 @@ const LETTER_WORDS: Record<string, string> = {
 const NUM_WORDS: Record<string, string> = { five: '5', six: '6', seven: '7', seventh: '7', nine: '9', ninth: '9', eleven: '11', eleventh: '11', thirteen: '13', thirteenth: '13', two: '2', four: '4' };
 
 export function spokenToChord(text: string): ChordSymbol | null {
-  let t = text.toLowerCase().replace(/[^a-z0-9#♯♭ ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const t = text.toLowerCase().replace(/[^a-z0-9#♯♭ ]+/g, ' ').replace(/\s+/g, ' ').trim();
   if (!t) return null;
   const words = t.split(' ');
   // root

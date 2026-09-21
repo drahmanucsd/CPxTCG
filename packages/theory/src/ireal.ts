@@ -45,7 +45,7 @@ export function importIReal(text: string): { songs: Song[]; errors: string[] } {
   if (!urls.length) return { songs, errors: ['No irealbook:// or irealb:// link found'] };
   for (const url of urls) {
     const isB = url.startsWith('irealb://');
-    let body = decodeURIComponent(url.replace(/^ireal(book|b):\/\//, '').replace(/\+/g, ' '));
+    const body = decodeURIComponent(url.replace(/^ireal(book|b):\/\//, '').replace(/\+/g, ' '));
     // playlists end with "===PlaylistName"
     const parts = body.split('===');
     for (const part of parts) {
@@ -188,7 +188,7 @@ export function parseIrealChords(text: string): Bar[] {
     if (ch === ',') { i++; continue; }
     if (ch === 'x' || ch === 'r' || ch === 'p' || ch === 'n') { cur.push(ch); i++; continue; }
     // chord token: root letter + anything up to space/bar/marker
-    const m = /^[A-G][^\s|\[\]{}ZTSQNfxrpnl*<(,]*/.exec(s.slice(i));
+    const m = /^[A-G][^\s|[\]{}ZTSQNfxrpnl*<(,]*/.exec(s.slice(i));
     if (m) { cur.push(m[0]); i += m[0].length; continue; }
     i++; // unknown char
   }
