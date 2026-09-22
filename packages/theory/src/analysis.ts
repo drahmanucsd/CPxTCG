@@ -106,7 +106,12 @@ export function inferKey(chords: ChordSymbol[], fallback: Key): Key {
     if (isMin7(c)) bump(pc(c.root + 10), 1, false);
     if (isHalfDim(c)) bump(pc(c.root + 10), 1, true);
   }
-  let best = fallback.tonic * 2 + (fallback.mode === 'minor' ? 1 : 0);
+  // A run of dominants (the rhythm-changes bridge: D7 G7 C7 F7) points at four tonics equally.
+  // Break the tie toward the written key, so that bridge reads III7-VI7-II7-V7 in Bb rather than
+  // modulating to whichever dominant happened to be enumerated first.
+  const home = fallback.tonic * 2 + (fallback.mode === 'minor' ? 1 : 0);
+  score.set(home, (score.get(home) ?? 0) + 1.5);
+  let best = home;
   let bestN = -1;
   for (const [k, n] of score) if (n > bestN) { best = k; bestN = n; }
   return { tonic: Math.floor(best / 2) as PitchClass, mode: best % 2 ? 'minor' : 'major' };

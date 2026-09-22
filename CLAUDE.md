@@ -4,6 +4,8 @@
 - Run: `pnpm install`, `pnpm test` (vitest), `pnpm typecheck`, `pnpm --filter @shed/web dev`. E2E: `pnpm --filter @shed/web build && PW_CHROMIUM=<chromium> npx playwright test` (tests inject MIDI through `window.__shed`).
 - Eyeball musical output: `pnpm theory voicings "Ebm7"`, `pnpm theory lead rootlessA,rootlessB "Dm7 G7 Cmaj7"`, `pnpm theory id F3 A3 C4 E4`.
 - Voicing families are data (`packages/theory/src/voicings.ts`); add a family by adding templates + a golden test in `test/voicings.test.ts`.
+- Courses are the learner-facing object (`packages/engine/src/courses.ts`): a family, staged. `stageSpec()` is the only place a stage turns into drill settings — never set a bpm or strictness in a screen.
+- Song analysis (`packages/theory/src/analysis.ts`) reads the chord stream, not one chord per bar; most ii-Vs are two chords inside one bar.
 - Grading semantics live in `packages/theory/src/matcher.ts` (strictness ladder) and `packages/engine/src/drill.ts` (windows, lateness). Change them there, not in the UI.
 - Docs in `docs/` are the plan of record; keep `04-build-plan.md` status current when a phase lands.
 - Never bundle copyrighted lead sheets. Built-in tunes must be public domain (published ≤ 1930 as of 2026).

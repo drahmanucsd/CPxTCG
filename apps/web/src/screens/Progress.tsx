@@ -5,11 +5,17 @@ import { db } from '../db';
 import { Heatmap } from '../components/Heatmap';
 import { heatByFamily, heatByQuality, recentAttempts, streakDays, weakSpots } from '../lib/stats';
 import { FAMILY_LABEL } from '../lib/suffix';
-import { PC_NAMES_FLAT } from '@shed/theory';
+import { PC_NAMES_FLAT, builtinSongs } from '@shed/theory';
+import { COURSES } from '@shed/engine';
+import { courseProgress } from '../lib/mastery';
+import { tuneProgress } from '../lib/repertoire';
+import { KeyRing } from '../components/KeyRing';
+import { BackLink } from '../components/BackLink';
 
 export default function Progress() {
   const rows = useLiveQuery(() => recentAttempts(60), []) ?? [];
-  const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().limit(30).toArray(), []) ?? [];
+  const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().limit(400).toArray(), []) ?? [];
+  const mySongs = useLiveQuery(() => db.songs.toArray(), []) ?? [];
   const [by, setBy] = useState<'family' | 'quality'>('family');
   const heat = by === 'family' ? heatByFamily(rows) : heatByQuality(rows);
   const weak = weakSpots(rows, 6);
@@ -22,9 +28,44 @@ export default function Progress() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Progress</h1>
+        <div>
+          <BackLink to="/" label="Today" />
+          <h1 className="text-2xl font-semibold tracking-tight mt-1">Progress</h1>
+        </div>
         <button className="btn btn-ghost" onClick={() => void exportJson()}>Export JSON</button>
       </div>
+      <section className="space-y-2">
+        <div className="label">Voicings</div>
+        <div className="space-y-1.5">
+          {COURSES.map((c) => {
+            const p = courseProgress(rows, c);
+            return (
+              <Link key={c.id} to={`/voicings/${c.id}`} className="flex items-center gap-3 py-1 hover:text-accent">
+                <span className="w-44 shrink-0 truncate text-sm">{c.name}</span>
+                <span className="text-xs text-ink-dim tabular-nums w-12">{p.mastered}/12</span>
+                <span className="min-w-0"><KeyRing keys={p.keys} /></span>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="label">Repertoire</div>
+        {(() => {
+          const all = [...builtinSongs(), ...mySongs.map((m) => m.song)].map((s) => ({ s, t: tuneProgress(sessions, s.id) }));
+          const known = all.filter((x) => x.t.status === 'known');
+          const rusty = all.filter((x) => x.t.status === 'rusty');
+          const learning = all.filter((x) => x.t.status === 'learning');
+          return (
+            <div className="text-sm space-y-1">
+              <div><span className="text-good tabular-nums">{known.length}</span> known · <span className="text-bad tabular-nums">{rusty.length}</span> rusty · <span className="text-warn tabular-nums">{learning.length}</span> learning</div>
+              {rusty.length > 0 && <div className="text-ink-dim">Due: {rusty.slice(0, 5).map((x) => x.s.title).join(' · ')}</div>}
+            </div>
+          );
+        })()}
+      </section>
+
       <div className="grid grid-cols-3 gap-3">
         <div className="card"><div className="label">Streak</div><div className="text-2xl font-semibold mt-1">{streakDays(sessions)} {streakDays(sessions) === 1 ? 'day' : 'days'}</div></div>
         <div className="card"><div className="label">This week</div><div className="text-2xl font-semibold mt-1">{minutesThisWeek} min</div></div>

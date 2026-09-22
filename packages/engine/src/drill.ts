@@ -63,6 +63,13 @@ export interface SongRef {
   to: number;
   /** scanned page image + per written-bar boxes (normalized) for the page-cursor view */
   scan?: { imageId: string; boxes: Array<{ x: number; y: number; w: number; h: number } | null> };
+  /**
+   * How much of the chart to show while playing. Memorisation as a hint ladder:
+   * chart → roman numerals → section boxes only → nothing.
+   */
+  reveal?: 'chart' | 'roman' | 'sections' | 'blank';
+  /** roman numeral per form bar, for the 'roman' reveal level */
+  romans?: Array<string | null>;
 }
 
 export interface DrillSpec {

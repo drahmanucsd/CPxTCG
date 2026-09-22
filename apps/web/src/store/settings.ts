@@ -6,6 +6,8 @@ export interface Settings {
   displayStyle: DisplayStyle;
   spelling: Spelling | 'key';
   latencyOffsetMs: number;
+  /** when the input latency was last measured; null = never, and timing verdicts cannot be trusted */
+  calibratedAt: number | null;
   midiDeviceId: string | null;
   clickVolume: number;
   pianoVolume: number;
@@ -25,7 +27,7 @@ export interface Settings {
 export const useSettings = create<Settings>()(
   persist(
     (set) => ({
-      displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
+      displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, calibratedAt: null, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
       visualPulse: true, speakPrompts: false, hintStyle: 'both', level: 'fluency', onboarded: false, courseStage: {}, backingBySong: {},
       set: (patch) => set(patch),
     }),

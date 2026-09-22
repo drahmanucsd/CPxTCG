@@ -96,7 +96,7 @@ export default function Course() {
                   <span className="text-xs text-ink-faint">{label}</span>
                 </div>
                 <div className="text-xs text-accent">{v.degrees.join(' · ')}</div>
-                <Keyboard hint={v.notes} toneLabels={Object.fromEntries(v.notes.map((n) => [n % 12, DEGREE[(n - v.chord.root + 144) % 12] ?? '']))} />
+                <Keyboard from={48} to={79} labels hint={v.notes} toneLabels={Object.fromEntries(v.notes.map((n) => [n % 12, DEGREE[(n - v.chord.root + 144) % 12] ?? '']))} />
                 <button className="btn btn-ghost !py-1 w-full" onClick={() => { void unlockAudio().then(() => playVoicing(v.notes)); }}>Hear it</button>
               </div>
             ))}
@@ -122,7 +122,7 @@ export default function Course() {
                 </div>
                 {s.id === 'show'
                   ? <button className="btn btn-ghost !py-1.5" onClick={() => setStage(current === 'show' ? 'copy' : 'show')}>{current === 'show' ? 'Done, next' : 'Show'}</button>
-                  : <button className="btn btn-ghost !py-1.5" disabled={locked} onClick={() => void start(s.id)}>{s.id === current ? 'Start' : 'Replay'}</button>}
+                  : <button className="btn btn-ghost !py-1.5" disabled={locked} onClick={() => void start(s.id)}>{locked ? 'Locked' : s.id === current ? 'Start' : 'Replay'}</button>}
               </li>
             );
           })}

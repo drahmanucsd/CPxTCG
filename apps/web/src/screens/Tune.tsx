@@ -9,6 +9,9 @@ import { loadSong, tuneDrillSpec, type TunePracticeOptions } from '../lib/songs'
 import { FAMILY_LABEL } from '../lib/suffix';
 import { useSettings } from '../store/settings';
 import { BackingTracks } from '../components/BackingTracks';
+import { SongAnalysis } from '../components/SongAnalysis';
+import { playVoicing, unlockAudio } from '../audio/context';
+import { chooseVoicing, generateVoicings, type Voicing } from '@shed/theory';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { addRecord } from '../lib/records';
 
@@ -20,7 +23,8 @@ export default function Tune() {
   const settings = useSettings();
   const [base, setBase] = useState<Song | null>(null);
   const [transpose, setTranspose] = useState(0);
-  const [view, setView] = useState<'written' | 'form' | 'guide' | 'page'>('written');
+  const [view, setView] = useState<'shape' | 'written' | 'form' | 'guide' | 'page'>('shape');
+  const [listening, setListening] = useState(false);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [sel, setSel] = useState<[number, number] | null>(null);
   const [opts, setOpts] = useState<Omit<TunePracticeOptions, 'mode' | 'transpose' | 'range'>>({ families: ['rootlessA', 'rootlessB'], voiceLeading: 'off', band: { style: 'swing', bass: true, drums: true }, bpm: 120, passes: 2, halfTime: false });
@@ -56,6 +60,25 @@ export default function Tune() {
     if (view !== 'form') return;
     setSel((cur) => (shift && cur ? [Math.min(cur[0], i), Math.max(cur[1], i)] : [i, i]));
   };
+  /** Play the changes back with model voicings before you touch the keys. */
+  const listen = async () => {
+    await unlockAudio();
+    const range = sel && view === 'form' ? form.slice(sel[0], sel[1] + 1) : form;
+    const chords = formToChords(range);
+    const beat = 60 / (opts.bpm || song.tempo || 120);
+    let prev: Voicing | null = null;
+    let t = 0;
+    setListening(true);
+    for (const c of chords) {
+      let cands: Voicing[] = [];
+      for (const f of opts.families) cands = cands.concat(generateVoicings(c.chord, f));
+      const v: Voicing | undefined = chooseVoicing(prev, cands) ?? cands[0];
+      if (v) { const at = t; setTimeout(() => playVoicing(v.notes, Math.max(0.4, c.beats * beat * 0.95)), at * 1000); prev = v; }
+      t += c.beats * beat;
+    }
+    setTimeout(() => setListening(false), t * 1000 + 300);
+  };
+
   const remove = async () => { if (base?.source !== 'builtin' && confirm('Delete this tune?')) { await db.songs.delete(base!.id); nav('/tunes'); } };
 
   return (
@@ -79,8 +102,8 @@ export default function Tune() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        {([...(song.scan ? ['page'] : []), 'written', 'form', 'guide'] as const).map((v) => (
-          <button key={v} className={`rounded-full px-3 py-1 ${view === v ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setView(v as typeof view)}>{v === 'page' ? 'Page' : v === 'written' ? 'Chart' : v === 'form' ? `Flat form (${form.length} bars)` : 'Guide tones'}</button>
+        {([...(song.scan ? ['page'] : []), 'shape', 'written', 'form', 'guide'] as const).map((v) => (
+          <button key={v} className={`rounded-full px-3 py-1 ${view === v ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setView(v as typeof view)}>{v === 'page' ? 'Page' : v === 'shape' ? 'Shape' : v === 'written' ? 'Chart' : v === 'form' ? `Flat form (${form.length} bars)` : 'Guide tones'}</button>
         ))}
         {sections.length > 0 && <span className="ml-3 text-ink-faint">Loop:</span>}
         {sections.map((s) => <button key={s.label + s.from} className="rounded-full px-3 py-1 bg-panel-2 text-ink-dim hover:text-ink" onClick={() => selectSection(s.label)}>{s.label}</button>)}
@@ -90,6 +113,7 @@ export default function Tune() {
 
       <div className="card overflow-x-auto">
         {view === 'page' && song.scan && (imgUrl ? <PageImage url={imgUrl} boxes={song.scan.boxes} /> : <div className="text-ink-dim text-sm">Loading page…</div>)}
+        {view === 'shape' && <SongAnalysis song={song} selected={sel} onPickSection={(from, to) => { setView('form'); setSel([from, to]); }} />}
         {view === 'written' && <ChordGrid bars={writtenBars(song.bars)} />}
         {view === 'form' && <ChordGrid bars={formBars(form)} selection={sel} onBarClick={onBarClick} />}
         {view === 'guide' && <GuideTones song={song} />}
@@ -105,6 +129,17 @@ export default function Tune() {
             </div>
             <label className="flex items-center gap-2"><input type="checkbox" checked={opts.voiceLeading === 'strict'} onChange={(e) => setOpts((o) => ({ ...o, voiceLeading: e.target.checked ? 'strict' : 'off' }))} /> Enforce voice leading (play the exact voice-led voicing)</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={opts.halfTime} onChange={(e) => setOpts((o) => ({ ...o, halfTime: e.target.checked }))} /> Half-time changes (every chord twice as long)</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.melody} onChange={(e) => setOpts((o) => ({ ...o, melody: e.target.checked }))} /> I&rsquo;m playing the melody too (only the left hand is graded)</label>
+            <div className="space-y-1">
+              <div className="text-ink-dim">How much chart</div>
+              <div className="flex gap-1">
+                {(['chart', 'roman', 'sections', 'blank'] as const).map((r) => (
+                  <button key={r} className={`rounded-lg px-2.5 py-1 text-xs ${(opts.reveal ?? 'chart') === r ? 'bg-accent/25 text-ink' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setOpts((o) => ({ ...o, reveal: r }))}>
+                    {r === 'chart' ? 'Chords' : r === 'roman' ? 'Numerals' : r === 'sections' ? 'Sections only' : 'Nothing'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="space-y-2">
             <div className="text-ink-dim">Band</div>
@@ -124,13 +159,14 @@ export default function Tune() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button className="btn btn-ghost" disabled={listening} onClick={() => void listen()}>{listening ? 'Playing…' : 'Listen first'}</button>
           {opts.youtube && <button className="btn btn-primary" onClick={() => void go('track')}>Play with the track</button>}
           {records.length > 0 && <button className="btn btn-primary" onClick={() => void go('record')}>Play with the record</button>}
           <button className={`btn ${opts.youtube || records.length ? 'btn-ghost' : 'btn-primary'}`} onClick={() => void go('changes')}>Play with the band{sel && view === 'form' ? ` (bars ${sel[0] + 1}–${sel[1] + 1})` : ''}</button>
           <button className="btn btn-ghost" onClick={() => void go('iiVs')}>Only the ii-Vs</button>
           <button className="btn btn-ghost" onClick={() => void go('quiz')}>Chord quiz (from memory)</button>
         </div>
-        <div className="text-xs text-ink-faint">Display: {settings.displayStyle === 'realbook' ? 'Real Book symbols' : 'plain symbols'} — change in Devices.</div>
+        <div className="text-xs text-ink-faint">Display: {settings.displayStyle === 'realbook' ? 'Real Book symbols' : 'plain symbols'} — change in Settings.</div>
       </div>
     </div>
   );

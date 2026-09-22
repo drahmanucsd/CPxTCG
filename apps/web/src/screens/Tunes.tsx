@@ -4,18 +4,29 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { builtinSongs, importIReal, parseChartText, songKeyName, type Song } from '@shed/theory';
 import { db } from '../db';
 import { saveSong } from '../lib/songs';
+import { STATUS_LABEL, STATUS_TONE, tuneProgress, type TuneStatus } from '../lib/repertoire';
 
 export default function Tunes() {
   const mine = useLiveQuery(() => db.songs.orderBy('title').toArray(), []) ?? [];
+  const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().limit(400).toArray(), []) ?? [];
   const [q, setQ] = useState('');
+  const [only, setOnly] = useState<TuneStatus | null>(null);
   const [importing, setImporting] = useState(false);
   const [text, setText] = useState('');
   const [report, setReport] = useState<string | null>(null);
   const all = useMemo(() => {
     const list: Array<{ song: Song; mine: boolean }> = [...mine.map((r) => ({ song: r.song, mine: true })), ...builtinSongs().map((song) => ({ song, mine: false }))];
     const needle = q.trim().toLowerCase();
-    return (needle ? list.filter((x) => x.song.title.toLowerCase().includes(needle) || (x.song.composer ?? '').toLowerCase().includes(needle)) : list).sort((a, b) => a.song.title.localeCompare(b.song.title));
-  }, [mine, q]);
+    const withStatus = list.map((x) => ({ ...x, t: tuneProgress(sessions, x.song.id) }));
+    const matched = needle ? withStatus.filter((x) => x.song.title.toLowerCase().includes(needle) || (x.song.composer ?? '').toLowerCase().includes(needle)) : withStatus;
+    const filtered = only ? matched.filter((x) => x.t.status === only) : matched;
+    return filtered.sort((a, b) => a.song.title.localeCompare(b.song.title));
+  }, [mine, q, sessions, only]);
+  const counts = useMemo(() => {
+    const c: Record<TuneStatus, number> = { new: 0, learning: 0, known: 0, rusty: 0 };
+    for (const r of [...mine.map((m) => m.song), ...builtinSongs()]) c[tuneProgress(sessions, r.id).status]++;
+    return c;
+  }, [mine, sessions]);
 
   const doImport = async (src: string) => {
     let songs: Song[] = [];
@@ -53,9 +64,20 @@ export default function Tunes() {
         </div>
       )}
       {!importing && report && <div className="text-sm text-ink-dim">{report}</div>}
+      <div className="flex flex-wrap gap-1.5 text-xs">
+        {(['known', 'rusty', 'learning', 'new'] as const).map((st) => (
+          <button
+            key={st}
+            className={`rounded-full px-3 py-1 ${only === st ? 'ring-1 ring-accent ' : ''}${STATUS_TONE[st]}`}
+            onClick={() => setOnly(only === st ? null : st)}
+          >{STATUS_LABEL[st]} {counts[st]}</button>
+        ))}
+        {only && <button className="text-ink-faint hover:text-ink px-2" onClick={() => setOnly(null)}>show all</button>}
+      </div>
       <div className="divide-y divide-line/60">
-        {all.map(({ song, mine: isMine }) => (
+        {all.map(({ song, mine: isMine, t }) => (
           <Link key={song.id} to={`/tunes/${encodeURIComponent(song.id)}`} className="flex items-center gap-3 py-2.5 hover:text-accent">
+            <span className={`text-[10px] rounded px-1.5 py-0.5 shrink-0 w-20 text-center ${STATUS_TONE[t.status]}`} title={t.lastPlayedAt ? `last played ${t.daysSince} day${t.daysSince === 1 ? '' : 's'} ago` : 'never played'}>{STATUS_LABEL[t.status]}</span>
             <span className="flex-1 min-w-0 truncate font-medium">{song.title}</span>
             <span className="text-sm text-ink-dim truncate w-40 hidden sm:block">{song.composer}</span>
             <span className="text-xs text-ink-faint w-10 text-right">{songKeyName(song)}</span>

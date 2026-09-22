@@ -116,14 +116,21 @@ Five surfaces. The daily path never leaves Home.
 | **Review** | After every session |
 | **Settings** | Devices, calibration, sound |
 
-## Build order
+## Build order — status
 
-1. **Hand split + moved-note highlight** — days of work, unblocks the method.
-2. **Voicing course** with auto-fading hints and mastery gates — replaces presets.
-3. **Analysis overlay + section loop.**
-4. **Chart fading + repertoire status.**
+| # | Item | State |
+|---|---|---|
+| 1 | Hand split + moved-note highlight | **Built.** `hands: { grade: 'below' }`, split derived per chord from the target; `Target.moved`/`held` lit on the keyboard |
+| 2 | Voicing courses, auto-fading hints, mastery gates | **Built.** `packages/engine/src/courses.ts`, 10 courses × 6 stages; `autoHint: 2 \| 'adaptive'`; keys-mastered derived from attempts |
+| 3 | Analysis overlay + section loop | **Built.** `packages/theory/src/analysis.ts` + the Shape tab; section click sets the practice range |
+| 4 | Chart fading + repertoire status | **Built.** `reveal: chart → roman → sections → blank`; tune status derived from sessions, rusty after 21 days |
 
-Everything else waits.
+Also done from the critique list: five-surface nav, Today rebuilt around the current course stage,
+review analytics behind a fold, progress led by keys-mastered and repertoire, first-run calibration
+warning before any timed drill, voice input cut.
+
+Not done: transposing a tune as a graded exercise (the transpose control exists, but nothing tracks
+"can you play it in a second key"), and the backing-track rework in `07-backing-and-repertoire-ux.md`.
 
 ## Open question for a teacher
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
-import { DrillRunner, PRESET_BY_ID, RhythmSection, SpeechInput, speechSupported, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
+import { Link, useNavigate, useParams } from 'react-router';
+import { DrillRunner, PRESET_BY_ID, RhythmSection, type DrillSpec, type DrillSummary, type Target } from '@shed/engine';
 import { STRICTNESS_LABEL, STRICTNESS_ORDER, chordTones, keyName, spellPc, type PitchClass, type Verdict } from '@shed/theory';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 import { getCapture, onMidiCC, onMidiNote, startMidi, useComputerKeyboardPiano, useMidiStore } from '../midi/midiService';
@@ -61,8 +61,6 @@ export default function Drill() {
   const runnerRef = useRef<DrillRunner | null>(null);
   const bandRef = useRef<RhythmSection | null>(null);
   const recRef = useRef<{ t0: number; events: Array<[number, number, number, number]>; off: () => void } | null>(null);
-  const speechRef = useRef<SpeechInput | null>(null);
-  const [heard, setHeard] = useState<{ text: string; ok: boolean | null } | null>(null);
   const [pageUrl, setPageUrl] = useState<string | null>(null);
   const stemRef = useRef<StemPlayer | null>(null);
   const [stems, setStems] = useState<Array<{ key: string; name: string; gain: number; muted: boolean }>>([]);
@@ -150,31 +148,8 @@ export default function Drill() {
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
     runner.on('repeat', ({ repeats }) => setView((v) => ({ ...v, repeats, verdict: null, verdictFinal: false, latenessMs: null, flash: null })));
-    runner.on('end', ({ summary }) => { if (abandoned.current) return; window.__shedTarget = null; bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
+    runner.on('end', ({ summary }) => { if (abandoned.current) return; window.__shedTarget = null; bandRef.current?.stop(); bandRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
-    if (spec.speak && speechSupported()) {
-      const sp = new SpeechInput();
-      speechRef.current = sp;
-      sp.on('chord', ({ chord, heard: text }) => {
-        const t = runner.currentTarget;
-        if (!t) return;
-        const ok = runner.markSpoken(t.index, text, chord);
-        setHeard({ text, ok });
-      });
-      sp.on('command', ({ command }) => {
-        if (command === 'next') runner.skip();
-        else if (command === 'slower') runner.setBpm(Math.max(30, runner.bpm - 8));
-        else if (command === 'faster') runner.setBpm(Math.min(300, runner.bpm + 8));
-        else if (command === 'stop') runner.end();
-        else if (command === 'pause') runner.pause();
-        else if (command === 'resume') runner.resume();
-        else if (command === 'hint') runner.hint();
-        else if (command === 'play') { const t = runner.currentTarget; if (t) playVoicing(t.voicing.notes); }
-      });
-      sp.on('transcript', ({ text, final }) => { if (!final) setHeard((h) => (h?.ok !== null ? { text, ok: null } : h)); });
-      sp.start();
-    }
-    runner.on('target', () => setHeard(null));
     setReady(true);
     if (spec.backing) {
       transport.muted = true;
@@ -301,7 +276,7 @@ export default function Drill() {
     return () => { window.removeEventListener('keydown', kd); offCC(); };
   }, [ready, spec, goOnOne, tapTempo]);
 
-  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); speechRef.current?.stop(); recRef.current?.off(); stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
+  useEffect(() => () => { runnerRef.current?.end(); bandRef.current?.stop(); recRef.current?.off(); stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); const t = getAudio().transport; t.stop(); t.muted = false; }, []);
 
   const run = runnerRef.current;
   const t = view.target;
@@ -339,7 +314,20 @@ export default function Drill() {
   }, [t, tones]);
   const avgLate = view.lateN ? Math.round(view.lateSum / view.lateN) : null;
   const tuneMode = !!spec?.song;
-  const gridBars = useMemo(() => (spec?.song ? spec.song.bars.map((b) => ({ key: b.formIndex, chords: b.chords, section: b.section })) : []), [spec]);
+  const reveal = spec?.song?.reveal ?? 'chart';
+  const gridBars = useMemo(() => {
+    const s = spec?.song;
+    if (!s) return [];
+    return s.bars.map((b) => {
+      if (reveal === 'chart') return { key: b.formIndex, chords: b.chords, section: b.section };
+      if (reveal === 'roman') {
+        const r = s.romans?.[b.formIndex] ?? null;
+        return { key: b.formIndex, chords: r ? [{ text: r, beats: 4 }] : [], section: b.section };
+      }
+      // 'sections' and 'blank': bar boxes only, so you still know where you are in the form
+      return { key: b.formIndex, chords: [], section: reveal === 'sections' ? b.section : undefined };
+    });
+  }, [spec, reveal]);
 
   if (!spec) return <div className="p-8 text-ink-dim">Loading drill…</div>;
 
@@ -359,7 +347,6 @@ export default function Drill() {
           {spec.ladder && <Chip>Speed ladder +{spec.ladder.up}/−{spec.ladder.down}</Chip>}
           {spec.band && <Chip>Band: {[spec.band.bass && 'bass', spec.band.drums && 'drums'].filter(Boolean).join(' + ')} · {spec.band.style}</Chip>}
           {spec.backing && <Chip>{spec.backing.kind === 'record' ? 'Your recording (stems)' : 'YouTube backing track'}{spec.backing.anchorSec !== undefined ? ' · auto-sync' : ''}</Chip>}
-          {spec.speak && <Chip>Name it & play it (voice)</Chip>}
           {midi.inputMode === 'mic' && <Chip>Microphone input · graded at pitch-class level</Chip>}
         </div>
         {spec.pacing.mode === 'timed' && (
@@ -384,6 +371,16 @@ export default function Drill() {
                 : 'The click keeps going and the chord comes round again until you play it right.'}
               {' '}In time means within ±{spec.pacing.timingWindowMs ?? 120} ms of the beat.
             </div>
+          </div>
+        )}
+        {spec.pacing.mode === 'timed' && !settings.calibratedAt && (
+          <div className="card w-full max-w-md text-left border-warn/60">
+            <div className="label text-warn">Not calibrated</div>
+            <div className="text-sm text-ink-dim mt-1">
+              This drill grades <em>when</em> you play, and until the input delay is measured, &ldquo;late&rdquo; is not a real
+              verdict. It takes about twenty seconds.
+            </div>
+            <Link to="/settings" className="btn btn-ghost !py-1 mt-2">Calibrate first</Link>
           </div>
         )}
         <button className="btn btn-primary text-lg px-8 py-4" onClick={() => void start()}>Start</button>
@@ -474,7 +471,6 @@ export default function Drill() {
               <div className="text-ink-dim">{t.moved.length === 1 ? 'One note moves' : `${t.moved.length} notes move`}: {t.moved.map((n) => noteName(n)).join(' ')} · {t.held.length} held</div>
             )}
             {view.repeats > 0 && <div className="text-warn">Again — take {view.repeats + 1}</div>}
-            {spec.speak && <div className={heard ? (heard.ok === null ? 'text-ink-dim' : heard.ok ? 'text-good' : 'text-bad') : 'text-ink-faint'}>{heard ? `heard “${heard.text}”${heard.ok === true ? ' — yes' : heard.ok === false ? ' — no' : ''}` : 'say the chord name'}</div>}
             {view.verdict && <div className={view.verdict.ok ? 'text-good' : 'text-bad'}>{view.verdict.message}{view.latenessMs !== null && view.verdict.ok ? ` · ${view.latenessMs > 0 ? '+' : ''}${view.latenessMs} ms` : ''}</div>}
           </div>
         )}

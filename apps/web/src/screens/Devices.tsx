@@ -3,7 +3,6 @@ import { formatChord, titleKey } from '@shed/theory';
 import { medianOffsetMs } from '@shed/engine';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 import { onMidiNote, selectDevice, setInputMode, useComputerKeyboardPiano, useMidiStatus } from '../midi/midiService';
-import { speechSupported } from '@shed/engine';
 import { useSettings } from '../store/settings';
 import { Keyboard } from '../components/Keyboard';
 import { FAMILY_LABEL } from '../lib/suffix';
@@ -73,7 +72,6 @@ export default function Devices() {
         </label>
         <div className="text-xs text-ink-dim">Hint 1 outlines the chord tones on the keyboard with their degrees, hint 2 shows the actual voicing, hint 3 plays it.</div>
         <label className="flex items-center justify-between text-sm">Speak chord names (hands-free)<input type="checkbox" checked={settings.speakPrompts} onChange={(e) => settings.set({ speakPrompts: e.target.checked })} /></label>
-        <div className="text-xs text-ink-dim">Voice input (say the chord name, "next", "slower"…): {speechSupported() ? 'available in this browser — enable per drill ("Name it & play it")' : 'not available in this browser (Chrome/Edge have it)'}</div>
       </section>
 
       <section className="card space-y-4">
@@ -113,7 +111,7 @@ function LatencyCalibration() {
       stop();
       const m = medianOffsetMs(clicks.current, tapTimes.current);
       setResult(m);
-      if (m !== null) settings.set({ latencyOffsetMs: m });
+      if (m !== null) settings.set({ latencyOffsetMs: m, calibratedAt: Date.now() });
     }, 9000);
   };
   return (
@@ -122,6 +120,7 @@ function LatencyCalibration() {
       <div className="text-sm text-ink-dim">Tap a key on your piano (or the space bar) on every click for 8 clicks. We measure how late your notes arrive and shift the grading window so you're never called late when you weren't.</div>
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" disabled={running} onClick={() => void start()}>{running ? `Listening… ${taps} taps` : 'Calibrate'}</button>
+        {settings.calibratedAt && <span className="text-xs text-ink-faint ml-2">last measured {new Date(settings.calibratedAt).toLocaleDateString()}</span>}
         <span className="text-sm">Current offset: <span className="font-medium">{settings.latencyOffsetMs} ms</span>{result !== null && <span className="text-good ml-2">measured {result} ms</span>}{result === null && taps > 0 && !running && <span className="text-warn ml-2">not enough clean taps — try again</span>}</span>
         <button className="btn btn-ghost !py-1" onClick={() => settings.set({ latencyOffsetMs: 0 })}>Reset</button>
       </div>

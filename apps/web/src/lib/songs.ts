@@ -1,4 +1,4 @@
-import { builtinSongs, formToChords, resolveForm, transposeSong, type FormBar, type ProgressionChord, type Song } from '@shed/theory';
+import { analyzeSong, builtinSongs, formToChords, resolveForm, romanPerBar, transposeSong, type FormBar, type ProgressionChord, type Song } from '@shed/theory';
 import type { DrillSpec, SongRef, BandSpec } from '@shed/engine';
 import { db } from '../db';
 
@@ -25,6 +25,10 @@ export interface TunePracticeOptions {
   passes: number;
   halfTime: boolean;
   strictness?: DrillSpec['strictness'];
+  /** play the melody in the right hand: grade the left hand only */
+  melody?: boolean;
+  /** how much of the chart you get while playing — the memorisation ladder */
+  reveal?: 'chart' | 'roman' | 'sections' | 'blank';
   youtube?: string;
   anchorSec?: number;
   recordId?: string;
@@ -36,6 +40,8 @@ function songRef(song: Song, form: FormBar[], from: number, to: number): SongRef
     bars: form.map((b) => ({ formIndex: b.formIndex, barIndex: b.barIndex, section: b.section, chords: b.chords.map((c) => ({ text: c.chord ? c.chord.text : 'N.C.', beats: c.beats })) })),
   };
   if (song.scan) ref.scan = song.scan;
+  // numerals are computed once here so the drill screen can fade the chart down to them
+  try { ref.romans = romanPerBar(song, analyzeSong(song)); } catch { /* an odd chart should not stop practice */ }
   return ref;
 }
 
@@ -83,6 +89,8 @@ export function tuneDrillSpec(base: Song, o: TunePracticeOptions): DrillSpec {
     tags: ['tune'],
     song: songRef(song, form, from, to),
   };
+  if (o.melody) spec.hands = { grade: 'below' };
+  if (o.reveal && o.reveal !== 'chart') { spec.song!.reveal = o.reveal; spec.id += `-${o.reveal}`; }
   if (o.band && timed) spec.band = { ...o.band, style: song.style };
   const vid = o.mode === 'track' && o.youtube ? youtubeId(o.youtube) : null;
   if (vid && timed) {

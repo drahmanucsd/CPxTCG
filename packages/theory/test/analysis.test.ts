@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeSong, findCadences, inferKey } from '../src/analysis.js';
+import { analyzeSong, findCadences, inferKey, romanPerBar } from '../src/analysis.js';
 import { parseChord } from '../src/chord.js';
 import { builtinSongs } from '../src/library.js';
 import { keyName } from '../src/roman.js';
@@ -55,6 +55,15 @@ describe('song analysis', () => {
     const second = a.sections[1]!;
     expect(second.sameAs).toBe('A');
     expect(second.differsAt?.length).toBeGreaterThan(0);
+  });
+  it('reads the rhythm-changes bridge as a dominant cycle at home, not a modulation', () => {
+    // D7 G7 C7 F7 points at four tonics equally; the written key has to break the tie, or the
+    // bridge reads as "I7 IV7 bVII7 in G" instead of III7-VI7-II7-V7 in Bb
+    const s = song('I Got Rhythm');
+    const a = analyzeSong(s);
+    const bridge = a.sections[2]!;
+    expect(keyName(bridge.key)).toBe('Bb');
+    expect(romanPerBar(s, a).slice(16, 24).join(' ')).toBe('III7 III7 VI7 VI7 II7 II7 V7 V7');
   });
   it('detects the bridge modulation in Body and Soul', () => {
     const a = analyzeSong(song('Body and Soul'));

@@ -28,6 +28,7 @@ export default function Review() {
     [session?.specId],
   ) ?? [];
   const [filter, setFilter] = useState<Outcome | null>(null);
+  const [details, setDetails] = useState(false);
   const [open, setOpen] = useState<number | null>(null);
   const [replaying, setReplaying] = useState(false);
 
@@ -190,6 +191,11 @@ export default function Review() {
         })}
       </div>
 
+      <button className="text-sm text-ink-dim hover:text-ink" onClick={() => setDetails((d) => !d)}>
+        {details ? '− Hide the detail' : '+ Why (timing, keys, every chord)'}
+      </button>
+
+      {details && (<>
       {timed && s.timing && s.timing.offsets.length > 0 && (
         <section className="card space-y-1">
           <div className="flex items-baseline justify-between">
@@ -254,6 +260,8 @@ export default function Review() {
           );
         })()}
       </section>
+
+      </>)}
 
       {runs.length > 1 && (
         <section className="card">
