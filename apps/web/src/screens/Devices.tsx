@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { formatChord, titleKey } from '@shed/theory';
+import { formatChord } from '@shed/theory';
 import { medianOffsetMs } from '@shed/engine';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 import { onMidiNote, selectDevice, setInputMode, useComputerKeyboardPiano, useMidiStatus } from '../midi/midiService';
@@ -46,17 +46,6 @@ export default function Devices() {
 
       <LatencyCalibration />
 
-      <section className="card space-y-2">
-        <div className="label">Backing-track catalog</div>
-        <div className="text-sm text-ink-dim">Every backing track you've synced once (beat 1 + tempo) can be exported and merged into <code>data/backing-catalog.json</code> so it's automatic for everyone.</div>
-        <button className="btn btn-ghost" onClick={() => {
-          const entries = Object.values(settings.backingBySong).filter((b) => b.verified && b.tuneTitle);
-          const tracks: Record<string, unknown[]> = {};
-          for (const b of entries) tracks[titleKey(b.tuneTitle!)] = [{ videoId: b.videoId, title: b.title, bpm: b.bpm, anchorSec: b.anchorSec, verified: true }];
-          const blob = new Blob([JSON.stringify({ version: 1, tracks }, null, 2)], { type: 'application/json' });
-          const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backing-catalog.verified.json'; a.click();
-        }}>Export verified syncs ({Object.values(settings.backingBySong).filter((b) => b.verified).length})</button>
-      </section>
 
       <section className="card space-y-4">
         <div className="label">Display</div>

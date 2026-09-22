@@ -1,69 +1,99 @@
 import { useEffect, useMemo, useState } from 'react';
-import { BackLink } from '../components/BackLink';
 import { useNavigate, useParams } from 'react-router';
-import { FAMILIES, formToChords, guideTones, resolveForm, sectionRanges, songKeyName, transposeSong, type Song } from '@shed/theory';
-import type { BandSpec } from '@shed/engine';
-import { ChordGrid, formBars, writtenBars } from '../components/ChordGrid';
+import { useLiveQuery } from 'dexie-react-hooks';
+import {
+  TUNE_STAGES, TUNE_STAGE_BY_ID, memoryReveal, nextTuneStage, tuneStageIndex, type BandSpec, type TuneStageId,
+} from '@shed/engine';
+import {
+  chooseVoicing, difficultyOf, formToChords, generateVoicings, guideTones, resolveForm, songKeyName, transposeSong,
+  type Song, type Voicing,
+} from '@shed/theory';
+import { ChordGrid, formBars } from '../components/ChordGrid';
+import { SongAnalysis } from '../components/SongAnalysis';
+import { BackLink } from '../components/BackLink';
 import { db } from '../db';
 import { loadSong, tuneDrillSpec, type TunePracticeOptions } from '../lib/songs';
+import { STATUS_LABEL, STATUS_TONE, tuneProgress } from '../lib/repertoire';
 import { FAMILY_LABEL } from '../lib/suffix';
 import { useSettings } from '../store/settings';
-import { BackingTracks } from '../components/BackingTracks';
-import { SongAnalysis } from '../components/SongAnalysis';
 import { playVoicing, unlockAudio } from '../audio/context';
-import { chooseVoicing, generateVoicings, type Voicing } from '@shed/theory';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { addRecord } from '../lib/records';
 
 const PRACTICE_FAMILIES = ['rootlessA', 'rootlessB', 'shell', 'guide', 'drop2', 'spread', 'twoHandRootless', 'quartal', 'upperStructure', 'fourWayClose'];
 
+/**
+ * A tune is a stage, not a page of options (docs/12-tune-stages.md).
+ * The screen shows where you are, one thing to do, and the chart at the level that stage needs.
+ * Everything else is behind Options.
+ */
 export default function Tune() {
   const { id } = useParams();
   const nav = useNavigate();
   const settings = useSettings();
   const [base, setBase] = useState<Song | null>(null);
   const [transpose, setTranspose] = useState(0);
-  const [view, setView] = useState<'shape' | 'written' | 'form' | 'guide' | 'page'>('shape');
-  const [listening, setListening] = useState(false);
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [sel, setSel] = useState<[number, number] | null>(null);
-  const [opts, setOpts] = useState<Omit<TunePracticeOptions, 'mode' | 'transpose' | 'range'>>({ families: ['rootlessA', 'rootlessB'], voiceLeading: 'off', band: { style: 'swing', bass: true, drums: true }, bpm: 120, passes: 2, halfTime: false });
-  useEffect(() => { void loadSong(decodeURIComponent(id ?? '')).then((s) => { setBase(s); if (s?.tempo) setOpts((o) => ({ ...o, bpm: s.tempo! })); if (s?.scan) setView('page'); }); }, [id]);
+  const [options, setOptions] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [refUrl, setRefUrl] = useState('');
+  const [opts, setOpts] = useState<Omit<TunePracticeOptions, 'mode' | 'transpose' | 'range'>>({
+    families: ['rootlessA', 'rootlessB'], voiceLeading: 'off',
+    band: { style: 'swing', bass: true, drums: true, piano: false }, bpm: 120, passes: 2, halfTime: false,
+  });
+
+  useEffect(() => { void loadSong(decodeURIComponent(id ?? '')).then((s) => { setBase(s); if (s?.tempo) setOpts((o) => ({ ...o, bpm: s.tempo! })); }); }, [id]);
   useEffect(() => {
     let url: string | null = null;
     if (base?.scan) void db.images.get(base.scan.imageId).then((row) => { if (row) { url = URL.createObjectURL(row.blob); setImgUrl(url); } });
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [base]);
+
   const song = useMemo(() => (base ? transposeSong(base, transpose) : null), [base, transpose]);
+  const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().limit(400).toArray(), []) ?? [];
   const records = useLiveQuery(() => (base ? db.records.where('songId').equals(base.id).toArray() : Promise.resolve([] as import('../db').RecordRow[])), [base]) ?? [];
   const [recordId, setRecordId] = useState<string | null>(null);
   const form = useMemo(() => (song ? resolveForm(song) : []), [song]);
-  const sections = useMemo(() => (song ? sectionRanges(song) : []), [song]);
-  if (!song) return <div className="text-ink-dim">Loading…</div>;
+  if (!song || !base) return <div className="text-ink-dim">Loading…</div>;
 
-  const go = async (mode: TunePracticeOptions['mode']) => {
+  const stageId: TuneStageId = settings.tuneStage[base.id] ?? 'listen';
+  const stage = TUNE_STAGE_BY_ID[stageId];
+  const after = nextTuneStage(stageId);
+  const prog = tuneProgress(sessions, base.id);
+  const diff = difficultyOf(base);
+  const reference = settings.reference[base.id];
+  const cleanRuns = settings.tuneMemory[base.id] ?? 0;
+  const reveal = stageId === 'memory' ? memoryReveal(cleanRuns) : stage.reveal;
+
+  const setStage = (s: TuneStageId) => settings.set({ tuneStage: { ...settings.tuneStage, [base.id]: s } });
+
+  /** Every stage compiles to a drill; the stage decides the settings, not the learner. */
+  const go = async () => {
+    if (stageId === 'listen') {
+      if (reference?.url) window.open(reference.url, '_blank', 'noreferrer');
+      else setOptions(true);
+      return;
+    }
+    const mode: TunePracticeOptions['mode'] =
+      stageId === 'map' ? 'quiz' : stageId === 'perform' && records.length ? 'record' : 'changes';
+    const families =
+      stageId === 'roots' ? ['close'] : stageId === 'guide' ? ['guide'] : opts.families;
     const rec = mode === 'record' ? records.find((r) => r.id === (recordId ?? records[0]?.id)) : undefined;
-    const spec = tuneDrillSpec(base!, { ...opts, mode, transpose, range: view === 'form' ? sel : null, ...(rec ? { recordId: rec.id, anchorSec: rec.anchorSec, bpm: rec.bpm ?? opts.bpm } : {}) });
+    const spec = tuneDrillSpec(base, {
+      ...opts, families, mode, transpose, range: sel,
+      melody: stage.handSplit,
+      reveal,
+      band: stageId === 'perform' ? null : opts.band,
+      ...(rec ? { recordId: rec.id, anchorSec: rec.anchorSec, bpm: rec.bpm ?? opts.bpm } : {}),
+    });
     await db.drills.put({ id: spec.id, spec, createdAt: Date.now(), updatedAt: Date.now(), custom: false });
     nav(`/drill/${spec.id}`);
   };
-  const selectSection = (label: string) => {
-    // map a written section to its first occurrence in the form
-    const s = sections.find((x) => x.label === label);
-    if (!s) return;
-    const from = form.findIndex((b) => b.barIndex === s.from);
-    let to = from;
-    while (to + 1 < form.length && form[to + 1]!.barIndex > form[to]!.barIndex && form[to + 1]!.barIndex <= s.to) to++;
-    setView('form'); setSel([from, to]);
-  };
-  const onBarClick = (i: number, shift: boolean) => {
-    if (view !== 'form') return;
-    setSel((cur) => (shift && cur ? [Math.min(cur[0], i), Math.max(cur[1], i)] : [i, i]));
-  };
-  /** Play the changes back with model voicings before you touch the keys. */
+
+  /** Play the changes back with model voicings — the ear before the hands. */
   const listen = async () => {
     await unlockAudio();
-    const range = sel && view === 'form' ? form.slice(sel[0], sel[1] + 1) : form;
+    const range = sel ? form.slice(sel[0], sel[1] + 1) : form;
     const chords = formToChords(range);
     const beat = 60 / (opts.bpm || song.tempo || 120);
     let prev: Voicing | null = null;
@@ -79,16 +109,20 @@ export default function Tune() {
     setTimeout(() => setListening(false), t * 1000 + 300);
   };
 
-  const remove = async () => { if (base?.source !== 'builtin' && confirm('Delete this tune?')) { await db.songs.delete(base!.id); nav('/tunes'); } };
+  const remove = async () => { if (base.source !== 'builtin' && confirm('Delete this tune?')) { await db.songs.delete(base.id); nav('/tunes'); } };
+  const onBarClick = (i: number, shift: boolean) => setSel((cur) => (shift && cur ? [Math.min(cur[0], i), Math.max(cur[1], i)] : [i, i]));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-end gap-4">
         <div className="min-w-0">
           <BackLink to="/tunes" label="Tunes" />
-          <div className="label mt-1">{song.source}</div>
-          <h1 className="text-3xl font-semibold tracking-tight truncate">{song.title}</h1>
-          <div className="text-ink-dim">{song.composer}</div>
+          <h1 className="text-3xl font-semibold tracking-tight truncate mt-1">{song.title}</h1>
+          <div className="text-ink-dim flex flex-wrap items-center gap-2">
+            <span>{song.composer}</span>
+            <span className={`text-[10px] rounded px-1.5 py-0.5 ${STATUS_TONE[prog.status]}`}>{STATUS_LABEL[prog.status]}</span>
+            <span className="text-xs text-ink-faint" title={diff.reasons.join(' · ')}>difficulty {diff.score}/5 · {diff.label}</span>
+          </div>
         </div>
         <div className="ml-auto flex items-center gap-2 text-sm">
           <span className="text-ink-dim">Key</span>
@@ -97,82 +131,122 @@ export default function Tune() {
           <button className="btn btn-ghost !px-2 !py-1" onClick={() => setTranspose((t) => t + 1)}>♯</button>
           {transpose !== 0 && <button className="text-xs text-ink-faint hover:text-ink" onClick={() => setTranspose(0)}>reset</button>}
           <span className="text-ink-faint ml-2">{song.timeSig.join('/')} · {song.style}{song.tempo ? ` · ${song.tempo}` : ''}</span>
-          {base?.source !== 'builtin' && <button className="btn btn-danger !py-1 ml-2" onClick={() => void remove()}>Delete</button>}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        {([...(song.scan ? ['page'] : []), 'shape', 'written', 'form', 'guide'] as const).map((v) => (
-          <button key={v} className={`rounded-full px-3 py-1 ${view === v ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setView(v as typeof view)}>{v === 'page' ? 'Page' : v === 'shape' ? 'Shape' : v === 'written' ? 'Chart' : v === 'form' ? `Flat form (${form.length} bars)` : 'Guide tones'}</button>
-        ))}
-        {sections.length > 0 && <span className="ml-3 text-ink-faint">Loop:</span>}
-        {sections.map((s) => <button key={s.label + s.from} className="rounded-full px-3 py-1 bg-panel-2 text-ink-dim hover:text-ink" onClick={() => selectSection(s.label)}>{s.label}</button>)}
-        {sel && view === 'form' && <span className="text-accent">bars {sel[0] + 1}–{sel[1] + 1} <button className="text-ink-faint hover:text-ink" onClick={() => setSel(null)}>×</button></span>}
-        {view === 'form' && !sel && <span className="text-ink-faint">click a bar, shift-click to extend</span>}
+      {/* where you are, and the one thing to do */}
+      <section className="card space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="label">Stage {tuneStageIndex(stageId) + 1} of {TUNE_STAGES.length} · {stage.name}</div>
+            <div className="text-lg mt-0.5">{stage.blurb}</div>
+          </div>
+          <div className="flex gap-2">
+            {stageId !== 'listen' && <button className="btn btn-ghost" disabled={listening} onClick={() => void listen()}>{listening ? 'Playing…' : 'Hear it'}</button>}
+            <button className="btn btn-primary" onClick={() => void go()}>{stage.action}</button>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {TUNE_STAGES.map((s, i) => (
+            <button
+              key={s.id}
+              title={s.blurb}
+              className={`rounded-md px-2 py-1 text-xs ${s.id === stageId ? 'bg-accent text-bg' : i < tuneStageIndex(stageId) ? 'bg-good/20 text-good' : 'bg-panel-2 text-ink-faint hover:text-ink'}`}
+              onClick={() => setStage(s.id)}
+            >{i + 1}. {s.name}</button>
+          ))}
+        </div>
+        {after && <div className="text-xs text-ink-faint">Next: {after.name} — {after.blurb}</div>}
+      </section>
+
+      {/* the chart, at the level this stage wants */}
+      <div className="card overflow-x-auto space-y-2">
+        {stageId === 'map' ? (
+          <SongAnalysis song={song} selected={sel} onPickSection={(from, to) => setSel([from, to])} />
+        ) : stageId === 'guide' ? (
+          <GuideTones song={song} />
+        ) : base.scan && imgUrl ? (
+          <PageImage url={imgUrl} boxes={base.scan.boxes} />
+        ) : reveal === 'blank' ? (
+          <div className="text-ink-faint text-sm py-6 text-center">No chart at this stage — you know it or you don&rsquo;t.</div>
+        ) : (
+          <ChordGrid bars={formBars(form)} selection={sel} onBarClick={onBarClick} />
+        )}
+        <div className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
+          <span>Loop:</span>
+          <button className={`rounded-full px-3 py-1 ${!sel ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setSel(null)}>Whole form</button>
+          {sectionsOf(form).map((s) => (
+            <button key={`${s.label}${s.from}`} className={`rounded-full px-3 py-1 ${sel && sel[0] === s.from && sel[1] === s.to ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setSel([s.from, s.to])}>{s.label}</button>
+          ))}
+          {sel && <span className="text-accent">bars {sel[0] + 1}–{sel[1] + 1}</span>}
+          <span className="ml-auto">click a bar, shift-click to extend</span>
+        </div>
       </div>
 
-      <div className="card overflow-x-auto">
-        {view === 'page' && song.scan && (imgUrl ? <PageImage url={imgUrl} boxes={song.scan.boxes} /> : <div className="text-ink-dim text-sm">Loading page…</div>)}
-        {view === 'shape' && <SongAnalysis song={song} selected={sel} onPickSection={(from, to) => { setView('form'); setSel([from, to]); }} />}
-        {view === 'written' && <ChordGrid bars={writtenBars(song.bars)} />}
-        {view === 'form' && <ChordGrid bars={formBars(form)} selection={sel} onBarClick={onBarClick} />}
-        {view === 'guide' && <GuideTones song={song} />}
-      </div>
+      <button className="text-sm text-ink-dim hover:text-ink" onClick={() => setOptions((v) => !v)}>
+        {options ? '− Hide options' : '+ Options (voicings, band, tempo, your recordings)'}
+      </button>
 
-      <div className="card space-y-4">
-        <div className="label">Practice</div>
-        <div className="grid sm:grid-cols-2 gap-4 text-sm">
-          <div className="space-y-2">
-            <div className="text-ink-dim">Voicings</div>
-            <div className="flex flex-wrap gap-1.5">
-              {PRACTICE_FAMILIES.map((f) => { const on = opts.families.includes(f); return <button key={f} className={`rounded-full px-3 py-1 text-xs border ${on ? 'bg-accent text-bg border-accent' : 'border-line text-ink-dim hover:text-ink'}`} onClick={() => setOpts((o) => ({ ...o, families: on ? o.families.filter((x) => x !== f) : [...o.families, f] }))}>{FAMILY_LABEL[f] ?? FAMILIES.find((x) => x.id === f)?.short ?? f}</button>; })}
-            </div>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={opts.voiceLeading === 'strict'} onChange={(e) => setOpts((o) => ({ ...o, voiceLeading: e.target.checked ? 'strict' : 'off' }))} /> Enforce voice leading (play the exact voice-led voicing)</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={opts.halfTime} onChange={(e) => setOpts((o) => ({ ...o, halfTime: e.target.checked }))} /> Half-time changes (every chord twice as long)</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.melody} onChange={(e) => setOpts((o) => ({ ...o, melody: e.target.checked }))} /> I&rsquo;m playing the melody too (only the left hand is graded)</label>
-            <div className="space-y-1">
-              <div className="text-ink-dim">How much chart</div>
-              <div className="flex gap-1">
-                {(['chart', 'roman', 'sections', 'blank'] as const).map((r) => (
-                  <button key={r} className={`rounded-lg px-2.5 py-1 text-xs ${(opts.reveal ?? 'chart') === r ? 'bg-accent/25 text-ink' : 'bg-panel-2 text-ink-dim hover:text-ink'}`} onClick={() => setOpts((o) => ({ ...o, reveal: r }))}>
-                    {r === 'chart' ? 'Chords' : r === 'roman' ? 'Numerals' : r === 'sections' ? 'Sections only' : 'Nothing'}
-                  </button>
-                ))}
+      {options && (
+        <div className="card space-y-4 text-sm">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="text-ink-dim">Voicings</div>
+              <div className="flex flex-wrap gap-1.5">
+                {PRACTICE_FAMILIES.map((f) => { const on = opts.families.includes(f); return <button key={f} className={`rounded-full px-3 py-1 text-xs border ${on ? 'bg-accent text-bg border-accent' : 'border-line text-ink-dim hover:text-ink'}`} onClick={() => setOpts((o) => ({ ...o, families: on ? o.families.filter((x) => x !== f) : [...o.families, f] }))}>{FAMILY_LABEL[f] ?? f}</button>; })}
               </div>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={opts.voiceLeading === 'strict'} onChange={(e) => setOpts((o) => ({ ...o, voiceLeading: e.target.checked ? 'strict' : 'off' }))} /> Enforce voice leading</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={opts.halfTime} onChange={(e) => setOpts((o) => ({ ...o, halfTime: e.target.checked }))} /> Half-time changes</label>
+            </div>
+            <div className="space-y-2">
+              <div className="text-ink-dim">Band</div>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.bass} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), bass: e.target.checked } }))} /> Bass</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.drums} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), drums: e.target.checked } }))} /> Drums</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.piano} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), piano: e.target.checked } }))} /> Piano (model voicings — mute it once you know them)</label>
+              <div className="flex items-center gap-2">Tempo <input type="number" className="input w-24" value={opts.bpm} min={30} max={300} onChange={(e) => setOpts((o) => ({ ...o, bpm: +e.target.value }))} /> bpm
+                <span className="ml-3">Choruses</span> <input type="number" className="input w-16" value={opts.passes} min={1} max={20} onChange={(e) => setOpts((o) => ({ ...o, passes: +e.target.value }))} /></div>
             </div>
           </div>
+
           <div className="space-y-2">
-            <div className="text-ink-dim">Band</div>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.bass} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), bass: e.target.checked } }))} /> Bass</label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={!!opts.band?.drums} onChange={(e) => setOpts((o) => ({ ...o, band: { ...(o.band ?? { style: 'swing', bass: false, drums: false } as BandSpec), drums: e.target.checked } }))} /> Drums</label>
-            <div className="flex items-center gap-2">Tempo <input type="number" className="input w-24" value={opts.bpm} min={30} max={300} onChange={(e) => setOpts((o) => ({ ...o, bpm: +e.target.value }))} /> bpm
-              <span className="ml-3">Choruses</span> <input type="number" className="input w-16" value={opts.passes} min={1} max={20} onChange={(e) => setOpts((o) => ({ ...o, passes: +e.target.value }))} /></div>
+            <div className="text-ink-dim">Reference recording <span className="text-ink-faint">(stage 1 — one link, opened in a new tab, never synced)</span></div>
+            <div className="flex gap-2">
+              <input className="input flex-1" placeholder="https://… a recording you want to learn from" value={refUrl || reference?.url || ''} onChange={(e) => setRefUrl(e.target.value)} />
+              <button className="btn btn-ghost !py-1" disabled={!refUrl.trim()} onClick={() => { settings.set({ reference: { ...settings.reference, [base.id]: { url: refUrl.trim() } } }); setRefUrl(''); }}>Save</button>
+            </div>
           </div>
-        </div>
-        <BackingTracks songId={base!.id} title={base!.title} onChoose={(v) => setOpts((o) => ({ ...o, youtube: v?.videoId, anchorSec: v?.verified ? v.anchorSec : undefined, ...(v?.bpm ? { bpm: v.bpm } : {}) }))} />
-        <div className="space-y-2 text-sm">
-          <div className="text-ink-dim">Your recordings <span className="text-ink-faint">(a mix, or stems from Moises/Demucs — piano muted by default)</span></div>
-          <div className="flex flex-wrap items-center gap-2">
-            {records.map((r) => <button key={r.id} className={`rounded-full px-3 py-1 text-xs border ${(recordId ?? records[0]?.id) === r.id ? 'bg-accent text-bg border-accent' : 'border-line text-ink-dim'}`} onClick={() => setRecordId(r.id)}>{r.label}{r.anchorSec !== undefined ? ' ✓' : ''}</button>)}
-            <label className="btn btn-ghost !py-1 cursor-pointer">Add audio<input type="file" accept="audio/*" multiple className="hidden" onChange={(e) => { const fs = [...(e.target.files ?? [])]; if (fs.length) void addRecord(base!.id, base!.title, fs).then((r) => setRecordId(r.id)); }} /></label>
-            {records.length > 0 && <button className="btn btn-danger !py-1" onClick={() => { const id = recordId ?? records[0]!.id; void db.records.delete(id); setRecordId(null); }}>Remove</button>}
+
+          <div className="space-y-2">
+            <div className="text-ink-dim">Your audio <span className="text-ink-faint">(stage 9 — a file you own; split it with Demucs first and drop the piano stem)</span></div>
+            <div className="flex flex-wrap items-center gap-2">
+              {records.map((r) => <button key={r.id} className={`rounded-full px-3 py-1 text-xs border ${(recordId ?? records[0]?.id) === r.id ? 'bg-accent text-bg border-accent' : 'border-line text-ink-dim'}`} onClick={() => setRecordId(r.id)}>{r.label}{r.anchorSec !== undefined ? ' ✓' : ''}</button>)}
+              <label className="btn btn-ghost !py-1 cursor-pointer">Add audio<input type="file" accept="audio/*" multiple className="hidden" onChange={(e) => { const fs = [...(e.target.files ?? [])]; if (fs.length) void addRecord(base.id, base.title, fs).then((r) => setRecordId(r.id)); }} /></label>
+              {records.length > 0 && <button className="btn btn-danger !py-1" onClick={() => { const rid = recordId ?? records[0]!.id; void db.records.delete(rid); setRecordId(null); }}>Remove</button>}
+            </div>
+            <div className="text-xs text-ink-faint">
+              <code>demucs -n htdemucs yourfile.mp3</code> gives four stems; for a piano trio, drop <code>other.wav</code> and
+              keep bass and drums. Everything stays on this device.
+            </div>
           </div>
+
+          {base.source !== 'builtin' && <button className="btn btn-danger !py-1" onClick={() => void remove()}>Delete this tune</button>}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button className="btn btn-ghost" disabled={listening} onClick={() => void listen()}>{listening ? 'Playing…' : 'Listen first'}</button>
-          {opts.youtube && <button className="btn btn-primary" onClick={() => void go('track')}>Play with the track</button>}
-          {records.length > 0 && <button className="btn btn-primary" onClick={() => void go('record')}>Play with the record</button>}
-          <button className={`btn ${opts.youtube || records.length ? 'btn-ghost' : 'btn-primary'}`} onClick={() => void go('changes')}>Play with the band{sel && view === 'form' ? ` (bars ${sel[0] + 1}–${sel[1] + 1})` : ''}</button>
-          <button className="btn btn-ghost" onClick={() => void go('iiVs')}>Only the ii-Vs</button>
-          <button className="btn btn-ghost" onClick={() => void go('quiz')}>Chord quiz (from memory)</button>
-        </div>
-        <div className="text-xs text-ink-faint">Display: {settings.displayStyle === 'realbook' ? 'Real Book symbols' : 'plain symbols'} — change in Settings.</div>
-      </div>
+      )}
     </div>
   );
 }
 
-/** Guide-tone line: 3rds and 7ths as two lines over the bars, on a mini staff. */
+/** Section ranges in form-bar indices, for the loop bar. */
+function sectionsOf(form: ReturnType<typeof resolveForm>): Array<{ label: string; from: number; to: number }> {
+  const out: Array<{ label: string; from: number; to: number }> = [];
+  for (const b of form) {
+    const last = out[out.length - 1];
+    if (b.section !== undefined && (!last || last.label !== b.section)) out.push({ label: b.section, from: b.formIndex, to: b.formIndex });
+    else if (last) last.to = b.formIndex;
+  }
+  return out.length > 1 ? out : [];
+}
+
 function GuideTones({ song }: { song: Song }) {
   const form = resolveForm(song);
   const chords = formToChords(form);

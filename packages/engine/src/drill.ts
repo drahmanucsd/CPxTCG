@@ -49,6 +49,8 @@ export interface BandSpec {
   style: 'swing' | 'bossa' | 'ballad' | 'latin' | 'waltz' | 'straight' | 'funk' | 'even8ths';
   bass: boolean;
   drums: boolean;
+  /** model voicings comped under the melody — what "Listen" plays, and mutable while you practise */
+  piano?: boolean;
   volume?: number;
 }
 

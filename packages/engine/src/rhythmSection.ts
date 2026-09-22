@@ -2,15 +2,34 @@
  * Synthesized rhythm section: walking/bossa/ballad bass generated from the changes, plus drums.
  * Everything is scheduled from the transport's 'schedule' event, so it stays sample-accurate.
  */
-import { type ChordSymbol, chordTones, pc } from '@shed/theory';
+import {
+  COMP_FIGURES, COMP_RHYTHMS, DEFAULT_FEEL, type ChordSymbol, chordTones, humanise, isFillBar, offbeatAt, pc, pickFigure, swingRatio, walkingBass,
+  type BassBar,
+} from '@shed/theory';
 import type { Transport } from './transport.js';
 import type { BandSpec } from './drill.js';
 
-export interface BeatContext { chord: ChordSymbol; next: ChordSymbol | null; beatInChord: number; chordBeats: number }
+export interface BeatContext { chord: ChordSymbol; next: ChordSymbol | null; beatInChord: number; chordBeats: number; /** the model voicing for this chord, for the piano track */ voicing?: number[] }
+
+/** Where we are in the tune, so the band can play the form rather than a loop. */
+export interface FormContext {
+  /** 0-based bar within the form */
+  bar: number;
+  /** bars in one chorus */
+  formBars: number;
+  /** 1-based chorus number */
+  chorus: number;
+}
 
 export class RhythmSection {
   private unsub: (() => void) | null = null;
   private lastBass = 40;
+  /** the current chord's walking line, one note per beat, regenerated when the chord changes */
+  private line: number[] = [];
+  private lineFor: string | null = null;
+  /** set by the host so the band knows where it is in the form */
+  form: FormContext | null = null;
+  private readonly feel = DEFAULT_FEEL;
   private readonly out: GainNode;
   private readonly rng = mulberry32(7);
 
@@ -28,6 +47,7 @@ export class RhythmSection {
       const beatsPerBar = this.transport.timeSig.beats;
       if (this.spec.drums) this.drums(b.time, b.beat, beatsPerBar, b.beatDuration);
       if (this.spec.bass && ctxBeat) this.bass(b.time, b.beat, beatsPerBar, b.beatDuration, ctxBeat);
+      if (this.spec.piano && ctxBeat) this.comp(b.time, b.beat, b.beatDuration, ctxBeat);
     });
   }
 
@@ -35,6 +55,23 @@ export class RhythmSection {
   setVolume(v: number): void { this.out.gain.value = v; }
 
   // ------------------------------------------------------------------ bass
+  /** Beats-per-chord walking line from the theory generator, cached per chord. */
+  private lineNote(c: BeatContext): number {
+    const key = `${c.chord.text}>${c.next?.text ?? '-'}:${c.chordBeats}:${this.form?.chorus ?? 1}`;
+    if (this.lineFor !== key) {
+      const bars: BassBar[] = [{ chord: c.chord, next: c.next, beats: c.chordBeats }];
+      const twoFeel = (this.form?.chorus ?? 1) === 1 && this.spec.style === 'swing';
+      this.line = walkingBass(bars, {
+        rng: this.rng, chorus: this.form?.chorus ?? 1, startNear: this.lastBass,
+        feel: twoFeel ? 'two' : 'walk',
+      });
+      this.lineFor = key;
+    }
+    const n = this.line[Math.min(c.beatInChord, this.line.length - 1)] ?? this.lastBass;
+    this.lastBass = n;
+    return n;
+  }
+
   private bass(time: number, beat: number, beatsPerBar: number, dur: number, c: BeatContext): void {
     const style = this.spec.style;
     const root = c.chord.bass ?? c.chord.root;
@@ -72,23 +109,46 @@ export class RhythmSection {
       else if (beat === 3 && last && nextRoot !== null) this.pluck(this.near(pc(nextRoot + 11), this.lastBass), time + dur / 2, dur * 0.4, 0.6);
       return;
     }
-    // walking (swing)
-    let note: number;
-    if (first) note = this.near(root);
-    else if (last && nextRoot !== null) {
-      // approach the next root: chromatic from below/above or the dominant (5th above)
-      const r = this.rng();
-      const target = this.near(nextRoot, this.lastBass);
-      note = r < 0.4 ? target - 1 : r < 0.7 ? target + 1 : this.near(pc(nextRoot + 7), this.lastBass);
-    } else {
-      const choices = c.beatInChord % 2 === 1 ? [third, fifth, seventh] : [fifth, pc(root + 2), third];
-      const p = choices[Math.floor(this.rng() * choices.length)]!;
-      note = this.near(p, this.lastBass);
-      if (note === this.lastBass) note = this.near(p, this.lastBass + 4);
+    // walking (swing): the line comes from the generator in packages/theory, which is where the
+    // "root on 1, approach the next root on 4" rules live and are tested
+    void third; void seventh; void fifth; void nextRoot; void last;
+    const note = this.lineNote(c);
+    const h = humanise(time, first ? 0.9 : 0.72, this.feel, this.rng, this.feel.bassOffset);
+    this.pluck(note, h.time, dur * (swing ? 0.95 : 0.9), h.vel);
+  }
+
+  /**
+   * Piano comping: the model voicing, placed with a real comping rhythm rather than on every
+   * downbeat. This is what the learner is about to be asked to play, so hearing it in time is
+   * itself the lesson.
+   */
+  private comp(time: number, beat: number, dur: number, c: BeatContext): void {
+    if (!c.voicing?.length) return;
+    const chorus = this.form?.chorus ?? 1;
+    const figure = beat === 0
+      ? (COMP_RHYTHMS[1 + Math.floor(this.rng() * (COMP_RHYTHMS.length - 1))] ?? COMP_RHYTHMS[0]!)
+      : [];
+    const hits = beat === 0 && chorus === 1 ? COMP_RHYTHMS[0]! : figure;   // first chorus: simple
+    for (const hit of hits) {
+      const at = time + (hit.at - beat) * dur;
+      if (at < time - 1e-6) continue;
+      const h = humanise(at, hit.vel * 0.5, this.feel, this.rng);
+      for (const n of c.voicing) this.chime(n, h.time, dur * 1.6, h.vel);
     }
-    // long chord: bounce the octave sometimes on beat 3
-    if (!first && !last && beat === 2 && c.chordBeats >= 4 && this.rng() < 0.3) note = this.near(root, this.lastBass);
-    this.pluck(note, time, dur * (swing ? 0.95 : 0.9), first ? 0.9 : 0.7);
+  }
+
+  /** A soft piano-ish tone for the comp track — deliberately quieter than the player. */
+  private chime(note: number, time: number, dur: number, vel: number): void {
+    const ctx = this.ctx;
+    const f = 440 * Math.pow(2, (note - 69) / 12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, time);
+    g.gain.linearRampToValueAtTime(vel * 0.18, time + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f;
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+    o.connect(lp).connect(g).connect(this.out);
+    o.start(time); o.stop(time + dur + 0.05);
   }
 
   /** Nearest bass-register note (E1..G3) of a pitch class to a reference. */
@@ -118,20 +178,43 @@ export class RhythmSection {
   }
 
   // ----------------------------------------------------------------- drums
-  private drumsCountIn(time: number, beat: number, _dur: number): void {
-    this.hat(time, beat === 0 ? 0.5 : 0.35);
+  private drumsCountIn(time: number, beat: number, dur: number): void {
+    // "one, two, a-one-two-three-four": the last bar of the count fills in the eighths
+    this.hat(time, beat === 0 ? 0.55 : 0.4);
+    this.rim(time, beat === 0 ? 0.5 : 0.35);
+    if (beat >= 2) this.hat(time + dur * offbeatAt(this.transport.bpm, this.spec.style === 'swing'), 0.25);
   }
 
   private drums(time: number, beat: number, beatsPerBar: number, dur: number): void {
     const style = this.spec.style;
-    const swing8 = time + dur * (2 / 3);
+    const bpm = this.transport.bpm;
+    // a fixed 2:1 sounds mechanical at both ends of the tempo range
+    const swing8 = time + dur * offbeatAt(bpm, true);
     const straight8 = time + dur / 2;
+    const f = this.form;
+    const chorus = f?.chorus ?? 1;
     switch (style) {
-      case 'swing':
-        this.ride(time, beat === 0 ? 0.55 : 0.45);
-        if (beat % 2 === 1) { this.ride(swing8, 0.3); this.hat(time, 0.5, true); }
-        if (beat === 0 && this.rng() < 0.15) this.kick(time, 0.25);
+      case 'swing': {
+        const r = humanise(time, beat === 0 ? 0.55 : 0.45, this.feel, this.rng, this.feel.rideOffset);
+        this.ride(r.time, r.vel);
+        if (beat % 2 === 1) { this.ride(swing8 + this.feel.rideOffset, 0.3); this.hat(time, 0.5, true); }
+        // feathered kick: felt more than heard
+        if (beat === 0) this.kick(time, 0.12);
+        if (beat === 0 && f) {
+          // comping figure for the bar, and a crash when the form comes round
+          for (const hit of pickFigure(COMP_FIGURES, f.bar, chorus, this.rng)) {
+            const at = time + (hit.at - beat) * dur;
+            if (at >= time) { const hh = humanise(at, hit.vel, this.feel, this.rng); this.snare(hh.time, hh.vel * 0.7); }
+          }
+          if (f.bar === 0 && chorus > 1) this.crash(time, 0.5);
+        }
+        // fill across the last two beats of a section
+        if (f && isFillBar(f.bar, f.formBars) && beat >= beatsPerBar - 2) {
+          this.snare(time + dur * 0.5, 0.35);
+          this.snare(time + dur * offbeatAt(bpm, true), 0.28);
+        }
         break;
+      }
       case 'ballad':
         this.brush(time, dur, beat % 2 === 1 ? 0.35 : 0.25);
         if (beat % 2 === 1) this.hat(time, 0.35, true);
@@ -192,6 +275,10 @@ export class RhythmSection {
     o.connect(g).connect(this.out); o.start(time); o.stop(time + 0.12);
   }
   private rim(time: number, vel: number): void { this.noise(time, 0.03, vel, { type: 'bandpass', freq: 1800, q: 4 }); }
+  private crash(time: number, vel: number): void {
+    this.noise(time, 1.2, vel * 0.5, { type: 'highpass', freq: 3000 });
+    this.noise(time, 0.6, vel * 0.3, { type: 'bandpass', freq: 900, q: 0.6 });
+  }
 }
 
 function mulberry32(a: number): () => number {

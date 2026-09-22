@@ -95,6 +95,9 @@ test('voicings: the ladder, a course, and its stages', async ({ page }) => {
 
 test('a tune shows its shape before you play it', async ({ page }) => {
   await page.goto('/tunes/builtin-i-got-rhythm');
+  // a tune opens on a stage, not a wall of controls
+  await expect(page.getByText(/Stage 1 of 10 · Listen/)).toBeVisible();
+  await page.getByRole('button', { name: '4. The map' }).click();
   // the one-line summary: bars, form, key centres, and ii-Vs the analyser found
   await expect(page.getByText(/^32 bars · AABA/)).toBeVisible();
   // the analyser must see ii-Vs that live two-to-a-bar, as nearly all of them do
@@ -108,12 +111,12 @@ test('tunes: library, tune page, play the changes with the band', async ({ page 
   await page.getByText('I Got Rhythm').click();
   await expect(page.getByRole('heading', { name: 'I Got Rhythm' })).toBeVisible();
   await page.screenshot({ path: 'test-results/tune.png' });
-  await page.getByText('Guide tones').click();
+  await page.getByRole('button', { name: '5. Guide tones' }).click();
   await page.screenshot({ path: 'test-results/tune-guide.png' });
-  await page.getByText('Flat form').click();
+  await page.getByRole('button', { name: '7. In time' }).click();
   await page.getByRole('button', { name: 'B', exact: true }).click();
   await expect(page.getByText(/bars 17–24/).first()).toBeVisible();
-  await page.getByRole('button', { name: /Play with the band/ }).click();
+  await page.getByRole('button', { name: 'Play with the band', exact: true }).click();
   await expect(page.getByRole('heading', { name: /I Got Rhythm — play the changes/ })).toBeVisible();
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.getByText('Count-in')).toBeHidden({ timeout: 6000 });

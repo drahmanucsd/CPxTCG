@@ -9,6 +9,7 @@ export * from './song.js';
 export * from './analysis.js';
 export * from './melody.js';
 export * from './walkingBass.js';
+export * from './groove.js';
 export * from './chartText.js';
 export * from './ireal.js';
 export * from './library.js';

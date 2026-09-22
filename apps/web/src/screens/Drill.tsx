@@ -109,7 +109,16 @@ export default function Drill() {
     recRef.current = rec;
     if (spec.band && spec.pacing.mode === 'timed') {
       bandRef.current?.stop();
-      bandRef.current = new RhythmSection(ctx, transport, (b) => runner.chordAtBeat(b), spec.band);
+      const formBars = spec.song ? spec.song.to - spec.song.from + 1 : 8;
+      bandRef.current = new RhythmSection(ctx, transport, (b) => {
+        const c = runner.chordAtBeat(b);
+        if (c && bandRef.current) {
+          const fi = c.target.pc.formIndex;
+          bandRef.current.form = { bar: fi === undefined ? 0 : fi - (spec.song?.from ?? 0), formBars, chorus: c.target.pass };
+          return { ...c, voicing: c.target.voicing.notes };
+        }
+        return c;
+      }, spec.band);
       bandRef.current.start();
     }
     setView({ ...initial, bpm: spec.pacing.bpm, state: 'idle', barResults: new Map() });
@@ -213,11 +222,8 @@ export default function Drill() {
     const b = spec?.backing; const song = spec?.song;
     if (!b || !song) return;
     if (b.kind === 'record') void db.records.update(b.recordId, { anchorSec: Math.round(anchorSec * 1000) / 1000, bpm });
-    else {
-      const st = useSettings.getState();
-      const prev = st.backingBySong[song.songId];
-      st.set({ backingBySong: { ...st.backingBySong, [song.songId]: { videoId: b.videoId, title: prev?.title ?? b.videoId, tuneTitle: song.title, bpm, anchorSec: Math.round(anchorSec * 1000) / 1000, verified: true } } });
-    }
+    // a YouTube reference is never synced (see docs/12): only your own audio carries an anchor
+    void bpm;
   }, [spec]);
   const goOnOne = useCallback(() => {
     const run = runnerRef.current;
