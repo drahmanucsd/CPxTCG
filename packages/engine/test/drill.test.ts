@@ -311,6 +311,23 @@ describe('DrillRunner — timed mode', () => {
     expect(levels).toEqual([1, 2, 1]);
     runner.end();
   });
+  it("skip gets you out of a repeating chord in 'onCorrect'", () => {
+    const { clock, timers, transport } = makeTransport(120, 0);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = {
+      ...PRESET_BY_ID['rootless-iiVI-4ths-120']!, ladder: undefined, length: { reps: 3 },
+      pacing: { mode: 'timed', bpm: 120, beatsPerChord: 4, countInBars: 0, timeSig: { beats: 4, unit: 4 }, advance: 'onCorrect', maxRepeats: 8 },
+    };
+    const runner = new DrillRunner({ spec, clock, capture, transport, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    runner.start();
+    const first = runner.currentTarget!;
+    timers.advance(transport.beatTime(first.beatIndex! + 4) + 0.01 - clock.now());
+    expect(runner.currentTarget!.index, 'still stuck on the same chord').toBe(first.index);
+    runner.skip();
+    expect(runner.currentTarget!.index).toBe(first.index + 1);
+    expect(runner.resultsSoFar[0]!.outcome).toBe('blank');
+    runner.end();
+  });
   it('every preset constructs and yields a first target', () => {
     for (const p of PRESETS) {
       const { clock, transport } = makeTransport(p.pacing.bpm || 100, 0);

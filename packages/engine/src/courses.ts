@@ -47,6 +47,13 @@ export interface Course {
   firstKeys: PitchClass[];
   /** true when the right hand plays something the drill should not grade */
   gradeLeftHandOnly?: boolean;
+  /**
+   * 'strict' — play the exact voice-led form. Right when choosing between A and B by which moves
+   *            less IS the skill (rootless, guide tones, shells).
+   * 'off'    — any valid voicing of the family passes. Right when the family has many equally
+   *            good forms and picking one would be arbitrary (drop 2 inversions, quartal stacks).
+   */
+  voiceLeading: 'strict' | 'off';
 }
 
 /** C, F, Bb, Eb, Ab, G — the flat keys jazz lives in, plus C and G to start. */
@@ -56,52 +63,52 @@ export const COURSES: Course[] = [
   {
     id: 'root37', name: 'RH root, LH 3-7', order: 1,
     blurb: 'The smallest thing that sounds like jazz piano. Left hand learns the guide tones while the right hand only has to find the key.',
-    families: ['root37'], qualities: ['maj7', 'm7', '7'], targetBpm: 80, firstKeys: FIRST_KEYS,
+    families: ['root37'], qualities: ['maj7', 'm7', '7'], voiceLeading: 'strict', targetBpm: 80, firstKeys: FIRST_KEYS,
   },
   {
     id: 'guide', name: 'Guide tones (LH 3-7)', order: 2,
     blurb: 'The same two notes with no root under them. Now you have to hear the voice leading instead of seeing it.',
-    families: ['guide'], qualities: ['maj7', 'm7', '7', 'm7b5'], targetBpm: 100, firstKeys: FIRST_KEYS,
+    families: ['guide'], qualities: ['maj7', 'm7', '7', 'm7b5'], voiceLeading: 'strict', targetBpm: 100, firstKeys: FIRST_KEYS,
   },
   {
     id: 'shell', name: 'Shells (1-3-7)', order: 3,
     blurb: 'Root, third, seventh in the left hand. Bud Powell. Holds a tune up on its own.',
-    families: ['shell'], qualities: ['maj7', 'm7', '7'], targetBpm: 100, firstKeys: FIRST_KEYS,
+    families: ['shell'], qualities: ['maj7', 'm7', '7'], voiceLeading: 'strict', targetBpm: 100, firstKeys: FIRST_KEYS,
   },
   {
     id: 'rootless', name: 'Rootless A and B', order: 4,
     blurb: 'The working left hand for playing with a bass player. The app picks A or B by whichever moves less.',
-    families: ['rootlessA', 'rootlessB'], qualities: ['maj7', 'm7', '7', 'm7b5', '7alt'], targetBpm: 120, firstKeys: FIRST_KEYS,
+    families: ['rootlessA', 'rootlessB'], qualities: ['maj7', 'm7', '7', 'm7b5', '7alt'], voiceLeading: 'strict', targetBpm: 120, firstKeys: FIRST_KEYS,
   },
   {
     id: 'rootless3', name: 'Rootless, three notes', order: 5,
     blurb: 'A and B with one note taken out. Lighter, and easier to move fast.',
-    families: ['rootless3A', 'rootless3B'], qualities: ['maj7', 'm7', '7', 'm7b5'], targetBpm: 130, firstKeys: FIRST_KEYS,
+    families: ['rootless3A', 'rootless3B'], qualities: ['maj7', 'm7', '7', 'm7b5'], voiceLeading: 'strict', targetBpm: 130, firstKeys: FIRST_KEYS,
   },
   {
     id: 'twoHand', name: 'Two-hand rootless', order: 6,
     blurb: 'Guide tones under tensions, split across both hands. The full comping sound.',
-    families: ['twoHandRootless'], qualities: ['maj7', 'm7', '7', 'm7b5', '7alt'], targetBpm: 110, firstKeys: FIRST_KEYS,
+    families: ['twoHandRootless'], qualities: ['maj7', 'm7', '7', 'm7b5', '7alt'], voiceLeading: 'strict', targetBpm: 110, firstKeys: FIRST_KEYS,
   },
   {
     id: 'spread', name: 'Two-hand spread', order: 7,
     blurb: 'Root and seventh down low, thirds and tensions on top. For when there is no bass player.',
-    families: ['spread'], qualities: ['maj7', 'm7', '7', 'm7b5'], targetBpm: 100, firstKeys: FIRST_KEYS,
+    families: ['spread'], qualities: ['maj7', 'm7', '7', 'm7b5'], voiceLeading: 'off', targetBpm: 100, firstKeys: FIRST_KEYS,
   },
   {
     id: 'quartal', name: 'Quartal', order: 8,
     blurb: 'Stacked fourths. McCoy and Herbie. Modal, open, no thirds to place you.',
-    families: ['quartal', 'quartal3'], qualities: ['m7', '7', 'maj7'], targetBpm: 100, firstKeys: FIRST_KEYS,
+    families: ['quartal', 'quartal3'], qualities: ['m7', '7', 'maj7'], voiceLeading: 'off', targetBpm: 100, firstKeys: FIRST_KEYS,
   },
   {
     id: 'drop2', name: 'Drop 2', order: 9,
     blurb: 'Take a close voicing and drop the second voice from the top an octave. Any inversion counts.',
-    families: ['drop2'], qualities: ['maj7', 'm7', '7', 'm7b5'], targetBpm: 90, firstKeys: FIRST_KEYS,
+    families: ['drop2'], qualities: ['maj7', 'm7', '7', 'm7b5'], voiceLeading: 'off', targetBpm: 90, firstKeys: FIRST_KEYS,
   },
   {
     id: 'upperStructure', name: 'Upper structures', order: 10,
     blurb: 'Guide tones in the left hand, a plain triad on a tension in the right. Where altered dominants come from.',
-    families: ['upperStructure'], qualities: ['7', '7alt', '7b9', '7#11'], targetBpm: 80, firstKeys: FIRST_KEYS,
+    families: ['upperStructure'], qualities: ['7', '7alt', '7b9', '7#11'], voiceLeading: 'off', targetBpm: 80, firstKeys: FIRST_KEYS,
   },
 ];
 
@@ -129,8 +136,8 @@ export function stageSpec(course: Course, stage: StageId, opts: StageOpts = {}):
   const base = {
     id: `course:${course.id}:${stage}`,
     families: course.families,
-    strictness: 'shape' as const,
-    voiceLeading: 'strict' as const,
+    strictness: course.voiceLeading === 'strict' ? ('shape' as const) : ('family' as const),
+    voiceLeading: course.voiceLeading,
     tags: ['course', course.id, stage],
     ...(opts.handSplit || course.gradeLeftHandOnly ? { hands: { grade: 'below' as const } } : {}),
   };

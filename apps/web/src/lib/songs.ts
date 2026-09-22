@@ -81,7 +81,8 @@ export function tuneDrillSpec(base: Song, o: TunePracticeOptions): DrillSpec {
     strictness: o.strictness ?? (o.mode === 'quiz' ? 'chordTones' : 'family'),
     voiceLeading: o.voiceLeading,
     pacing: timed
-      ? { mode: 'timed', bpm: o.bpm, beatsPerChord: 4, countInBars: 1, timeSig: { beats: song.timeSig[0], unit: song.timeSig[1] } }
+      // a tune always moves with the bar: repeating one chord would break the form
+      ? { mode: 'timed', bpm: o.bpm, beatsPerChord: 4, countInBars: 1, timeSig: { beats: song.timeSig[0], unit: song.timeSig[1] }, advance: 'onTime' }
       : { mode: 'free', bpm: 0, beatsPerChord: 4, countInBars: 0, timeSig: { beats: song.timeSig[0], unit: song.timeSig[1] }, holdMs: 400 },
     lookAhead: 'always',
     length: { passes: o.passes },

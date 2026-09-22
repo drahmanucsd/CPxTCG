@@ -16,7 +16,7 @@ function Nav() {
   const midi = useMidiStatus();
   // Five surfaces (docs/11-platform.md). Drills, Scan and Progress are still routed, but they
   // are reached from the surface they belong to rather than competing in the nav.
-  const items: Array<[string, string]> = [['/', 'Today'], ['/voicings', 'Voicings'], ['/tunes', 'Tunes'], ['/settings', 'Settings']];
+  const items: Array<[string, string]> = [['/', 'Today'], ['/voicings', 'Voicings'], ['/tunes', 'Tunes'], ['/drills', 'Drills'], ['/settings', 'Settings']];
   return (
     <nav className="flex items-center gap-1 px-4 py-2 border-b border-line/60 bg-bg sticky top-0 z-20">
       <span className="font-semibold tracking-tight mr-3 text-accent">Shed</span>

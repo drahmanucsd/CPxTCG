@@ -304,7 +304,9 @@ export default function Drill() {
   // hints can land as text, on the keyboard, or both (Settings → Hints)
   const hintOnKeys = settings.hintStyle !== 'text';
   const hintAsText = settings.hintStyle !== 'keyboard';
-  const hintNotes = t && ((hintOnKeys && view.hint >= 2) || view.hint >= 3) ? t.voicing.notes : [];
+  // a miss reveals the shape: you cannot learn from being told "no" and shown nothing
+  const revealOnMiss = !!view.verdict && !view.verdict.ok && view.verdictFinal;
+  const hintNotes = t && (revealOnMiss || (hintOnKeys && view.hint >= 2) || view.hint >= 3) ? t.voicing.notes : [];
   const hintTones = t && tones && hintOnKeys && view.hint >= 1 ? tones.memberPcs : [];
   const toneLabels = useMemo(() => {
     if (!t || !tones) return {};
@@ -352,10 +354,10 @@ export default function Drill() {
         {spec.pacing.mode === 'timed' && (
           <div className="card w-full max-w-md text-left space-y-4">
             <MetronomePanel value={metro} onChange={setMetro} />
-            <div className="flex items-center gap-2">
-              <div className="label w-20 shrink-0">Chord ends</div>
+            {!spec.song && <div className="flex items-center gap-2">
+              <div className="label w-20 shrink-0">If you miss</div>
               <div className="flex gap-1 flex-1">
-                {([['onTime', 'with the click'], ['onCorrect', 'when I play it']] as const).map(([mode, label]) => (
+                {([['onTime', 'the bar moves on'], ['onCorrect', 'the chord waits']] as const).map(([mode, label]) => (
                   <button
                     key={mode}
                     aria-pressed={(spec.pacing.advance ?? 'onTime') === mode}
@@ -364,12 +366,14 @@ export default function Drill() {
                   >{label}</button>
                 ))}
               </div>
-            </div>
+            </div>}
             <div className="text-xs text-ink-faint">
-              {(spec.pacing.advance ?? 'onTime') === 'onTime'
-                ? 'The drill moves on when the bar does, hit or miss.'
-                : 'The click keeps going and the chord comes round again until you play it right.'}
-              {' '}In time means within ±{spec.pacing.timingWindowMs ?? 120} ms of the beat.
+              {spec.song
+                ? 'A tune always moves with the bar — the form does not wait.'
+                : (spec.pacing.advance ?? 'onTime') === 'onTime'
+                  ? 'The click carries on and so does the drill, hit or miss. This is playing a tune.'
+                  : 'The click carries on but this chord comes round again until you play it. Same pulse, no wall of misses. Press → to give up on one.'}
+              {' '}&ldquo;In time&rdquo; means within ±{spec.pacing.timingWindowMs ?? 120} ms of the beat.
             </div>
           </div>
         )}
@@ -484,6 +488,8 @@ export default function Drill() {
         )}
         <div className={`w-full ${tuneMode ? 'max-w-xl' : 'max-w-3xl'} transition-opacity`} style={{ opacity: showDiff || hintNotes.length || hintTones.length || midi.held.length ? 1 : tuneMode ? 0 : 0.25, display: tuneMode && !(showDiff || hintNotes.length || hintTones.length) ? 'none' : undefined }}>
           <Keyboard
+            from={KB_FROM}
+            to={KB_TO}
             good={showDiff ? view.verdict!.correctNotes : []}
             bad={showDiff ? view.verdict!.wrongNotes : []}
             missed={showDiff ? view.verdict!.missedNotes : []}
@@ -501,7 +507,7 @@ export default function Drill() {
       <div className="px-4 pb-4 flex items-center gap-2 text-sm">
         <button className="btn btn-ghost" onClick={() => run?.hint()}>Hint {view.hint > 0 && <span className="text-accent">{view.hint}/3</span>}</button>
         <button className="btn btn-ghost" onClick={() => t && playVoicing(t.voicing.notes)}>Play it</button>
-        {spec.pacing.mode === 'free' && <button className="btn btn-ghost" onClick={() => run?.skip()}>Skip</button>}
+        {(spec.pacing.mode === 'free' || (spec.pacing.advance ?? 'onTime') === 'onCorrect') && <button className="btn btn-ghost" onClick={() => run?.skip()} title="Move on even if it is marked wrong (→)">Skip</button>}
         {spec.pacing.mode === 'timed' && <button className="btn btn-ghost tabular-nums" onClick={() => setMetroOpen(true)}>Tempo {view.bpm}</button>}
         <span className="ml-auto text-xs text-ink-faint">{midi.inputMode === 'mic' ? 'microphone' : midi.connected ? midi.deviceName : 'computer keyboard'}{midi.sustain ? ' · pedal' : ''}</span>
         <button className="btn btn-danger" onClick={() => run?.end()}>End</button>
@@ -548,6 +554,10 @@ function Chip({ children }: { children: React.ReactNode }) {
 
 /** Interval from the root → the degree name a player reads. */
 const DEGREE: Record<number, string> = { 0: '1', 1: 'b9', 2: '9', 3: 'b3', 4: '3', 5: '11', 6: 'b5', 7: '5', 8: 'b13', 9: '13', 10: 'b7', 11: '7' };
+
+/** Fixed keyboard window. Auto-fitting per chord made it jump size on every change. */
+const KB_FROM = 36;
+const KB_TO = 84;
 
 function noteName(n: number): string {
   const names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];

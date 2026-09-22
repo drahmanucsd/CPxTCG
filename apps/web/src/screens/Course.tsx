@@ -6,7 +6,7 @@ import { PC_NAMES_FLAT, chooseVoicing, generateVoicings, iiVI, type PitchClass, 
 import { db } from '../db';
 import { recentAttempts } from '../lib/stats';
 import { courseProgress, nextStage } from '../lib/mastery';
-import { KeyRing } from '../components/KeyRing';
+import { COMMON_KEYS, KeyRing } from '../components/KeyRing';
 import { BackLink } from '../components/BackLink';
 import { Keyboard } from '../components/Keyboard';
 import { ChordText } from '../components/ChordDisplay';
@@ -69,16 +69,18 @@ export default function Course() {
           <div className="label">Keys</div>
           <div className="text-sm text-ink-dim tabular-nums">{p.mastered}/12 mastered</div>
         </div>
-        <KeyRing keys={p.keys} picked={chosen as number[]} onPick={(k) => {
+        <KeyRing keys={p.keys} markCommon picked={chosen as number[]} onPick={(k) => {
           const has = chosen.includes(k as PitchClass);
           const next = has ? chosen.filter((x) => x !== k) : [...chosen, k as PitchClass];
           setKeys(next.length ? next : course.firstKeys);
         }} />
-        <div className="flex gap-2 text-sm">
+        <div className="flex flex-wrap gap-2 text-sm">
           <button className="btn btn-ghost !py-1" onClick={() => setKeys(course.firstKeys)}>First six</button>
+          <button className="btn btn-ghost !py-1" onClick={() => setKeys(COMMON_KEYS as PitchClass[])}>Common keys</button>
           <button className="btn btn-ghost !py-1" onClick={() => setKeys([0, 5, 10, 3, 8, 1, 6, 11, 4, 9, 2, 7])}>All twelve</button>
           <button className="btn btn-ghost !py-1" onClick={() => setKeys(p.keys.filter((k) => !k.mastered).map((k) => k.key))}>The ones I miss</button>
         </div>
+        <div className="text-xs text-ink-faint">Underlined keys are the ones standards are usually in. Click a key to add or drop it.</div>
       </section>
 
       {/* Stage 1 is a screen, not a drill: the shape, the degrees, and the sound. */}
@@ -86,7 +88,12 @@ export default function Course() {
         <section className="card space-y-4">
           <div>
             <div className="label">Show me</div>
-            <div className="text-sm text-ink-dim mt-1">A ii-V-I in {PC_NAMES_FLAT[chosen[0] ?? 0]}, voice-led the way the drill will ask for it.</div>
+            <div className="text-sm text-ink-dim mt-1">
+              A ii-V-I in {PC_NAMES_FLAT[chosen[0] ?? 0]}.{' '}
+              {course.voiceLeading === 'strict'
+                ? 'Voice-led: the drill wants this exact form, because choosing the shape that moves least is the skill.'
+                : 'Any valid form of this family passes — the drill will not insist on this particular one.'}
+            </div>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             {demo.map(({ label, v }) => (
@@ -122,7 +129,9 @@ export default function Course() {
                 </div>
                 {s.id === 'show'
                   ? <button className="btn btn-ghost !py-1.5" onClick={() => setStage(current === 'show' ? 'copy' : 'show')}>{current === 'show' ? 'Done, next' : 'Show'}</button>
-                  : <button className="btn btn-ghost !py-1.5" disabled={locked} onClick={() => void start(s.id)}>{locked ? 'Locked' : s.id === current ? 'Start' : 'Replay'}</button>}
+                  : locked
+                    ? <button className="btn btn-ghost !py-1.5 text-ink-faint" title="Skip ahead — the gates are a suggestion, not a rule" onClick={() => { setStage(s.id); void start(s.id); }}>Skip to here</button>
+                    : <button className="btn btn-ghost !py-1.5" onClick={() => void start(s.id)}>{s.id === current ? 'Start' : 'Replay'}</button>}
               </li>
             );
           })}

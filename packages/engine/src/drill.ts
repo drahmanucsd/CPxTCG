@@ -422,12 +422,25 @@ export class DrillRunner extends Emitter<DrillEvents> {
 
   end(): void { this.finish(); }
 
-  /** Skip the current chord (free mode). Counts as a miss. */
+/**
+   * Move past the current chord. Works in free time and in 'onCorrect', where the chord would
+   * otherwise come round until you played it or hit the repeat cap — a grader can be wrong, and
+   * the learner needs a way out. Counts as a miss.
+   */
   skip(): void {
     const t = this.currentTarget;
-    if (!t || this.state !== 'running' || this.spec.pacing.mode !== 'free') return;
+    if (!t || (this.state !== 'running' && this.state !== 'countIn')) return;
+    const free = this.spec.pacing.mode === 'free';
+    if (!free && this.advanceMode !== 'onCorrect') return;
     this.record(t, { ok: false, met: null, diagnosis: ['nothingPlayed'], missingPcs: [], extraPcs: [], correctNotes: [], wrongNotes: [], missedNotes: t.voicing.notes, message: 'Skipped' }, null, null, true);
-    this.advanceFree(0);
+    this.resultFor(t).outcome = 'blank';
+    if (free) { this.advanceFree(0); return; }
+    // timed: hand the rest of this chord's window back and move to the next chord
+    this.current++;
+    if (this.spec.length.reps && this.current >= this.spec.length.reps) { this.finish(); return; }
+    if (!this.ensureTargets(3)) { this.finish(); return; }
+    this.assignBeats();
+    this.emitTarget();
   }
 
   /** Request a hint for the current chord; returns the new hint level (1..3). */
