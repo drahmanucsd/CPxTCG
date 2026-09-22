@@ -4,7 +4,7 @@
  */
 import {
   type ChordSymbol, type Key, type KeyOrder, type PitchClass, type ProgressionChord, type RealizeOptions, type Strictness, type Verdict, type Voicing,
-  STRICTNESS_ORDER, blues, chooseVoicing, cycle, evaluate, generateVoicings, iiVIAllKeys, parseProgression, randomChord, turnaround, keySequence, formatChord, qualityClass,
+  STRICTNESS_ORDER, blues, chooseVoicing, cycle, evaluate, generateVoicings, iiVI, iiVIAllKeys, parseProgression, randomChord, turnaround, keySequence, formatChord, qualityClass,
 } from '@shed/theory';
 import { type Clock, Emitter } from './clock.js';
 import type { Attempt, ChordCapture } from './capture.js';
@@ -12,7 +12,7 @@ import type { Transport } from './transport.js';
 
 export type GeneratorSpec =
   | { kind: 'random'; suffixes: string[]; roots?: PitchClass[]; smart?: boolean }
-  | { kind: 'iiVI'; order: KeyOrder; minor?: boolean; shape?: 'iiVI' | 'iiV' | 'VI' | 'iiVIVI'; longTonic?: boolean; altered?: boolean; start?: PitchClass }
+  | { kind: 'iiVI'; order: KeyOrder; minor?: boolean; shape?: 'iiVI' | 'iiV' | 'VI' | 'iiVIVI'; longTonic?: boolean; altered?: boolean; start?: PitchClass; /** exact keys, in this order — overrides `order` */ keys?: PitchClass[] }
   | { kind: 'cycle'; suffix: string; order: KeyOrder; start?: PitchClass }
   | { kind: 'turnaround'; id: string; order: KeyOrder | 'single'; tonic?: PitchClass; minor?: boolean }
   | { kind: 'blues'; id: string; tonic: PitchClass }
@@ -80,6 +80,15 @@ export interface DrillSpec {
   realize?: RealizeOptions;
   /** ms window before the beat in which an attack counts for that beat */
   earlyMs?: number;
+  /**
+   * Hints without the learner asking.
+   *   number     — every chord starts at this hint level (stage "copy": the notes are just there)
+   *   'adaptive' — level 0, rising one step each time you stall on the chord
+   * See docs/11-platform.md: hints should fade with performance, not be a setting.
+   */
+  autoHint?: number | 'adaptive';
+  /** 'adaptive': ms of not getting it before the next hint appears. Default 4000. */
+  stallMs?: number;
   /** show roman numerals instead of chord symbols when available */
   prompt?: 'symbol' | 'roman' | 'hidden';
   tags?: string[];
@@ -126,6 +135,8 @@ export interface TargetResult {
   chordText: string;
   chord: ChordSymbol;
   roman?: string;
+  /** tonic of the key this chord belongs to — a ii-V-I in C is "key C", not three roots */
+  keyTonic?: PitchClass;
   family: string;
   label: string;
   /** the notes were right (regardless of when) */
@@ -245,7 +256,11 @@ function makeSource(spec: DrillSpec, rng: () => number, weight?: DrillRunnerOpti
   }
   let list: ProgressionChord[];
   switch (g.kind) {
-    case 'iiVI': list = iiVIAllKeys(g.order, { minor: g.minor, shape: g.shape, longTonic: g.longTonic, altered: g.altered, start: g.start, beatsPerChord: beats, rng }); break;
+    case 'iiVI': {
+      const o = { minor: g.minor, shape: g.shape, longTonic: g.longTonic, altered: g.altered, beatsPerChord: beats };
+      list = g.keys?.length ? g.keys.flatMap((k) => iiVI(k, o)) : iiVIAllKeys(g.order, { ...o, start: g.start, rng });
+      break;
+    }
     case 'cycle': list = cycle(g.suffix, g.order, { start: g.start, beatsPerChord: beats, rng }); break;
     case 'turnaround':
       list = g.order === 'single' ? turnaround(g.id, g.tonic ?? 0, g.minor) : keySequence(g.order, g.tonic ?? 0, rng).flatMap((k) => turnaround(g.id, k, g.minor));
@@ -290,6 +305,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
   private startedAt = 0;
   private unsubs: Array<() => void> = [];
   private holdTimer: unknown = null;
+  private stallTimer: unknown = null;
   private endTimer: unknown = null;
   private lastPass = 1;
   private finished = false;
@@ -472,6 +488,34 @@ export class DrillRunner extends Emitter<DrillEvents> {
     if (!t || t.index === this.emittedIndex) return;
     this.emittedIndex = t.index;
     this.emit('target', { target: t, upcoming: this.upcoming });
+    this.armHints(t);
+  }
+
+  /** Hints the learner did not ask for: a fixed level, or one that rises as they stall. */
+  private armHints(t: Target): void {
+    this.clearStall();
+    const a = this.spec.autoHint;
+    if (a === undefined) return;
+    if (typeof a === 'number') {
+      const r = this.resultFor(t);
+      r.hints = Math.max(r.hints, a);
+      this.emit('hint', { target: t, level: r.hints });
+      return;
+    }
+    const tick = () => {
+      const cur = this.currentTarget;
+      if (!cur || cur.index !== t.index || this.state === 'ended') return;
+      const r = this.resultFor(cur);
+      if (r.ok || r.hints >= 3) return;
+      r.hints += 1;
+      this.emit('hint', { target: cur, level: r.hints });
+      this.stallTimer = this._setTimeout(tick, this.spec.stallMs ?? 4000);
+    };
+    this.stallTimer = this._setTimeout(tick, this.spec.stallMs ?? 4000);
+  }
+
+  private clearStall(): void {
+    if (this.stallTimer !== null) { this._clearTimeout(this.stallTimer); this.stallTimer = null; }
   }
 
   private resultFor(t: Target): TargetResult {
@@ -483,6 +527,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
         hints: 0, attempts: 0, message: '', playedNotes: [], targetNotes: t.voicing.notes, bpm: this.bpm, pass: t.pass,
       };
       if (t.pc.roman) r.roman = t.pc.roman;
+      if (t.pc.key) r.keyTonic = t.pc.key.tonic;
       this.results.set(t.index, r);
     }
     return r;
@@ -518,6 +563,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
     if (attempt) { r.attempts++; r.playedNotes = this.gradedNotes(attempt.notes, t); if (verdict.ok) r.attackTime = attempt.attackTime; }
     r.ok = verdict.ok; r.met = verdict.met; r.message = verdict.message; r.latenessMs = latenessMs; r.bpm = this.bpm;
     r.timing = this.classifyTiming(t, latenessMs);
+    if (verdict.ok) this.clearStall();
     if (verdict.ok) {
       r.assisted = r.hints > 0;
       // free time has no grid, so there is nothing to be late for
@@ -608,6 +654,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
     r.ok = false; r.met = null; r.timing = null; r.latenessMs = null; r.outcome = 'blank'; r.message = '';
     this.emittedIndex = -1;
     this.assignBeats();
+    if (this.spec.autoHint === 'adaptive' && r.hints < 3) { r.hints += 1; this.emit('hint', { target: t, level: r.hints }); }
     this.emit('repeat', { target: t, repeats: r.repeats });
   }
 
@@ -631,6 +678,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
     this.transport?.stop();
     for (const u of this.unsubs) u();
     if (this.holdTimer !== null) this._clearTimeout(this.holdTimer);
+    this.clearStall();
     if (this.endTimer !== null) this._clearTimeout(this.endTimer);
     if (this.pollTimer !== null) this._clearInterval(this.pollTimer);
     // settle anything in flight

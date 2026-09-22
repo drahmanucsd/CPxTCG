@@ -6,6 +6,7 @@ export * from './matcher.js';
 export * from './roman.js';
 export * from './progressions.js';
 export * from './song.js';
+export * from './analysis.js';
 export * from './chartText.js';
 export * from './ireal.js';
 export * from './library.js';

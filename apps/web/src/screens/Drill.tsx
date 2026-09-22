@@ -470,6 +470,9 @@ export default function Drill() {
             <span>{FAMILY_LABEL[t.voicing.family] ?? t.voicing.family}</span>
             {hintAsText && view.hint >= 1 && tones && <div className="mt-1 text-ink">Chord tones: {tones.memberPcs.map((p) => spellPc(p as PitchClass, 'flat')).join(' ')}</div>}
             {hintAsText && view.hint >= 2 && <div className="text-accent">{t.voicing.label} → {t.voicing.notes.map((n) => noteName(n)).join(' ')}</div>}
+            {hintNotes.length > 0 && t.moved.length > 0 && t.held.length > 0 && (
+              <div className="text-ink-dim">{t.moved.length === 1 ? 'One note moves' : `${t.moved.length} notes move`}: {t.moved.map((n) => noteName(n)).join(' ')} · {t.held.length} held</div>
+            )}
             {view.repeats > 0 && <div className="text-warn">Again — take {view.repeats + 1}</div>}
             {spec.speak && <div className={heard ? (heard.ok === null ? 'text-ink-dim' : heard.ok ? 'text-good' : 'text-bad') : 'text-ink-faint'}>{heard ? `heard “${heard.text}”${heard.ok === true ? ' — yes' : heard.ok === false ? ' — no' : ''}` : 'say the chord name'}</div>}
             {view.verdict && <div className={view.verdict.ok ? 'text-good' : 'text-bad'}>{view.verdict.message}{view.latenessMs !== null && view.verdict.ok ? ` · ${view.latenessMs > 0 ? '+' : ''}${view.latenessMs} ms` : ''}</div>}
@@ -489,6 +492,7 @@ export default function Drill() {
             bad={showDiff ? view.verdict!.wrongNotes : []}
             missed={showDiff ? view.verdict!.missedNotes : []}
             hint={hintNotes}
+            moved={hintNotes.length ? (t?.moved ?? []) : []}
             tones={hintTones}
             toneLabels={toneLabels}
             held={showDiff ? [] : midi.held}

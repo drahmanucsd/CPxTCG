@@ -5,6 +5,8 @@ import Drill from './screens/Drill';
 import Review from './screens/Review';
 import Progress from './screens/Progress';
 import Devices from './screens/Devices';
+import Voicings from './screens/Voicings';
+import Course from './screens/Course';
 import Tunes from './screens/Tunes';
 import Tune from './screens/Tune';
 import Scan from './screens/Scan';
@@ -12,7 +14,9 @@ import { useMidiStatus } from './midi/midiService';
 
 function Nav() {
   const midi = useMidiStatus();
-  const items: Array<[string, string]> = [['/', 'Today'], ['/drills', 'Drills'], ['/tunes', 'Tunes'], ['/progress', 'Progress'], ['/devices', 'Devices']];
+  // Five surfaces (docs/11-platform.md). Drills, Scan and Progress are still routed, but they
+  // are reached from the surface they belong to rather than competing in the nav.
+  const items: Array<[string, string]> = [['/', 'Today'], ['/voicings', 'Voicings'], ['/tunes', 'Tunes'], ['/settings', 'Settings']];
   return (
     <nav className="flex items-center gap-1 px-4 py-2 border-b border-line/60 bg-bg sticky top-0 z-20">
       <span className="font-semibold tracking-tight mr-3 text-accent">Shed</span>
@@ -36,10 +40,13 @@ export default function App() {
       <main className={fullscreen ? 'flex-1' : 'flex-1 max-w-5xl w-full mx-auto px-4 py-6'}>
         <Routes>
           <Route path="/" element={<Today />} />
+          <Route path="/voicings" element={<Voicings />} />
+          <Route path="/voicings/:courseId" element={<Course />} />
           <Route path="/drills" element={<Drills />} />
           <Route path="/drill/:id" element={<Drill />} />
           <Route path="/review/:sessionId" element={<Review />} />
           <Route path="/progress" element={<Progress />} />
+          <Route path="/settings" element={<Devices />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/tunes" element={<Tunes />} />
           <Route path="/tunes/:id" element={<Tune />} />

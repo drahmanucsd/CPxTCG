@@ -14,6 +14,11 @@ export interface KeyboardProps {
   held?: number[];
   /** target notes to show as a hint (amber) */
   hint?: number[];
+  /**
+    * Of the hinted notes, the ones that CHANGE from the previous chord. Lit brightly while the
+    * held notes stay dim — the whole point of voice leading is that only one or two move.
+    */
+   moved?: number[];
   /** pitch classes (0-11) to outline everywhere they appear — the first rung of the hint ladder */
   tones?: number[];
   /** degree label per pitch class, e.g. { 2: '9', 5: 'b7' }, drawn on outlined keys */
@@ -28,7 +33,7 @@ const NAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 /** SVG piano keyboard with per-note colouring. Auto-fits its range to the notes it needs to show if from/to omitted. */
 export function Keyboard(p: KeyboardProps) {
-  const all = [...(p.good ?? []), ...(p.bad ?? []), ...(p.missed ?? []), ...(p.held ?? []), ...(p.hint ?? [])];
+  const all = [...(p.good ?? []), ...(p.bad ?? []), ...(p.missed ?? []), ...(p.held ?? []), ...(p.hint ?? []), ...(p.moved ?? [])];
   const lo = p.from ?? (all.length ? Math.min(48, Math.floor(Math.min(...all) / 12) * 12) : 48);
   const hi = p.to ?? (all.length ? Math.max(72, Math.ceil((Math.max(...all) + 1) / 12) * 12) : 72);
   const from = Math.max(21, lo), to = Math.min(108, hi);
@@ -38,7 +43,8 @@ export function Keyboard(p: KeyboardProps) {
   const colour = (n: number, isBlack: boolean) => {
     if (p.bad?.includes(n)) return 'var(--color-bad)';
     if (p.good?.includes(n)) return 'var(--color-good)';
-    if (p.hint?.includes(n)) return 'var(--color-accent)';
+    if (p.moved?.includes(n)) return 'var(--color-accent)';
+    if (p.hint?.includes(n)) return p.moved?.length ? '#6f5a2c' : 'var(--color-accent)';
     if (p.held?.includes(n)) return isBlack ? '#6b7d92' : '#c9d3df';
     return isBlack ? '#101318' : '#f1eee7';
   };

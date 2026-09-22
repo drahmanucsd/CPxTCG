@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import type { DrillSpec, Outcome, TargetResult } from '@shed/engine';
-import { PRESET_BY_ID } from '@shed/engine';
+import { COURSE_BY_ID, PRESET_BY_ID, STAGES, stageSpec, type StageId } from '@shed/engine';
 import { db } from '../db';
 import { ChordText } from '../components/ChordDisplay';
 import { Keyboard } from '../components/Keyboard';
 import { TimingStrip } from '../components/TimingStrip';
 import { BackLink } from '../components/BackLink';
 import { FAMILY_LABEL, suffixOf } from '../lib/suffix';
+import { stagePassed } from '../lib/mastery';
 import { useSettings } from '../store/settings';
 import { getAudio, playVoicing, unlockAudio } from '../audio/context';
 import {
@@ -47,6 +48,23 @@ export default function Review() {
   const prev = runs[runs.findIndex((r) => r.id === session.id) - 1];
   const delta = prev ? pct(s.clean) - Math.round(prev.clean * 100) : null;
   const bestCleanTempo = Math.max(0, ...runs.filter((r) => r.clean >= 0.9).map((r) => r.bpm));
+
+  // a course stage run: "course:<courseId>:<stageId>"
+  const part = session.specId.split(':');
+  const course = part[0] === 'course' ? COURSE_BY_ID[part[1] ?? ''] : undefined;
+  const stage = (part[2] ?? null) as StageId | null;
+  const cleanRate = s.total ? s.clean / s.total : 0;
+  const passed = course && stage ? stagePassed(stage, cleanRate, s.total) : false;
+  const after = stage ? STAGES[STAGES.findIndex((x) => x.id === stage) + 1] : undefined;
+  const goStage = async (next: StageId) => {
+    if (!course) return;
+    // the whole point of the waiting stage: the clock starts at the tempo you actually held
+    const bpm = next === 'clock' && s.measuredBpm ? s.measuredBpm : undefined;
+    const spec = { ...stageSpec(course, next, bpm ? { bpm } : {}), id: `course:${course.id}:${next}` };
+    await db.drills.put({ id: spec.id, spec, createdAt: Date.now(), updatedAt: Date.now(), custom: false });
+    settings.set({ courseStage: { ...settings.courseStage, [course.id]: next } });
+    nav(`/drill/${spec.id}`);
+  };
 
   const plan = readPlan();
   const nextBlock = plan && plan.ids[plan.index] === session.specId && plan.index + 1 < plan.ids.length
@@ -117,6 +135,27 @@ export default function Review() {
           </span>
         </div>
       </div>
+
+      {course && stage && (
+        <div className={`card flex flex-wrap items-center gap-4 ${passed ? 'border-good/60' : ''}`}>
+          <div className="min-w-0 flex-1">
+            <div className="label">{course.name} · {STAGES.find((x) => x.id === stage)?.name}</div>
+            <div className="text-lg mt-0.5">
+              {passed
+                ? after ? `Passed. Next: ${after.name.toLowerCase()}.` : 'Passed the last stage of this course.'
+                : 'Not through this stage yet — run it again.'}
+            </div>
+            {stage === 'waits' && s.measuredBpm !== null && (
+              <div className="text-sm text-ink-dim mt-1">
+                You held about <span className="text-ink tabular-nums">{s.measuredBpm} bpm</span>. That is what the clock gets set to next.
+              </div>
+            )}
+          </div>
+          {passed && after
+            ? <button className="btn btn-primary" onClick={() => void goStage(after.id)}>{after.name} →</button>
+            : <button className="btn btn-ghost" onClick={() => void goStage(stage)}>Run it again</button>}
+        </div>
+      )}
 
       {/* the verdict, and the one thing to do about it */}
       <div className="card flex flex-wrap items-center gap-4">

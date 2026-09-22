@@ -273,6 +273,44 @@ describe('DrillRunner — timed mode', () => {
     expect(summary!.measuredBpm).toBeGreaterThan(110);
     expect(summary!.measuredBpm).toBeLessThan(130);
   });
+  it('auto-hints: a fixed level shows immediately, adaptive rises only when you stall', () => {
+    const fixed = (() => {
+      const clock = new ManualClock();
+      const timers = new ManualTimers(clock);
+      const capture = new ChordCapture();
+      const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 2 }, autoHint: 2 };
+      const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+      const levels: number[] = [];
+      runner.on('hint', (e) => levels.push(e.level));
+      runner.start();
+      return levels;
+    })();
+    expect(fixed[0]).toBe(2);
+
+    const clock = new ManualClock();
+    const timers = new ManualTimers(clock);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 3 }, autoHint: 'adaptive', stallMs: 1000 };
+    const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    const levels: number[] = [];
+    let t: Target | null = null;
+    runner.on('hint', (e) => levels.push(e.level));
+    runner.on('target', (e) => { t = e.target; });
+    runner.start();
+    expect(levels).toEqual([]);          // nothing offered up front
+    timers.advance(1.05);
+    expect(levels).toEqual([1]);         // stalled once
+    timers.advance(1.05);
+    expect(levels).toEqual([1, 2]);
+    // getting it right stops this chord's ladder
+    play(capture, t!.voicing.notes, clock.now(), timers, clock);
+    timers.advance(0.5);
+    expect(levels).toEqual([1, 2]);
+    // the next chord starts its own ladder from scratch rather than inheriting the level
+    timers.advance(1.05);
+    expect(levels).toEqual([1, 2, 1]);
+    runner.end();
+  });
   it('every preset constructs and yields a first target', () => {
     for (const p of PRESETS) {
       const { clock, transport } = makeTransport(p.pacing.bpm || 100, 0);
