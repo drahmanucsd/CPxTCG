@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { builtinSongs, importIReal, parseChartText, songKeyName, type Song } from '@shed/theory';
+import { builtinSongs, difficultyOf, importIReal, parseChartText, songKeyName, type Song } from '@shed/theory';
 import { db } from '../db';
 import { saveSong } from '../lib/songs';
 import { STATUS_LABEL, STATUS_TONE, tuneProgress, type TuneStatus } from '../lib/repertoire';
@@ -11,6 +11,7 @@ export default function Tunes() {
   const sessions = useLiveQuery(() => db.sessions.orderBy('startedAt').reverse().limit(400).toArray(), []) ?? [];
   const [q, setQ] = useState('');
   const [only, setOnly] = useState<TuneStatus | null>(null);
+  const [sort, setSort] = useState<'title' | 'difficulty'>('difficulty');
   const [importing, setImporting] = useState(false);
   const [text, setText] = useState('');
   const [report, setReport] = useState<string | null>(null);
@@ -20,8 +21,9 @@ export default function Tunes() {
     const withStatus = list.map((x) => ({ ...x, t: tuneProgress(sessions, x.song.id) }));
     const matched = needle ? withStatus.filter((x) => x.song.title.toLowerCase().includes(needle) || (x.song.composer ?? '').toLowerCase().includes(needle)) : withStatus;
     const filtered = only ? matched.filter((x) => x.t.status === only) : matched;
-    return filtered.sort((a, b) => a.song.title.localeCompare(b.song.title));
-  }, [mine, q, sessions, only]);
+    const withDiff = filtered.map((x) => ({ ...x, d: difficultyOf(x.song) }));
+    return withDiff.sort((a, b) => (sort === 'title' ? 0 : a.d.score - b.d.score) || a.song.title.localeCompare(b.song.title));
+  }, [mine, q, sessions, only, sort]);
   const counts = useMemo(() => {
     const c: Record<TuneStatus, number> = { new: 0, learning: 0, known: 0, rusty: 0 };
     for (const r of [...mine.map((m) => m.song), ...builtinSongs()]) c[tuneProgress(sessions, r.id).status]++;
@@ -73,13 +75,17 @@ export default function Tunes() {
           >{STATUS_LABEL[st]} {counts[st]}</button>
         ))}
         {only && <button className="text-ink-faint hover:text-ink px-2" onClick={() => setOnly(null)}>show all</button>}
+        <button className="ml-auto text-ink-faint hover:text-ink" onClick={() => setSort(sort === 'title' ? 'difficulty' : 'title')}>
+          sorted by {sort === 'title' ? 'title' : 'difficulty'}
+        </button>
       </div>
       <div className="divide-y divide-line/60">
-        {all.map(({ song, mine: isMine, t }) => (
+        {all.map(({ song, mine: isMine, t, d }) => (
           <Link key={song.id} to={`/tunes/${encodeURIComponent(song.id)}`} className="flex items-center gap-3 py-2.5 hover:text-accent">
             <span className={`text-[10px] rounded px-1.5 py-0.5 shrink-0 w-20 text-center ${STATUS_TONE[t.status]}`} title={t.lastPlayedAt ? `last played ${t.daysSince} day${t.daysSince === 1 ? '' : 's'} ago` : 'never played'}>{STATUS_LABEL[t.status]}</span>
             <span className="flex-1 min-w-0 truncate font-medium">{song.title}</span>
             <span className="text-sm text-ink-dim truncate w-40 hidden sm:block">{song.composer}</span>
+            <span className="text-xs text-ink-faint w-8 text-right tabular-nums" title={`difficulty ${d.score}/5 — ${d.reasons.join('; ') || 'nothing unusual'}`}>{'●'.repeat(d.score)}</span>
             <span className="text-xs text-ink-faint w-10 text-right">{songKeyName(song)}</span>
             <span className="text-xs text-ink-faint w-16 text-right">{song.tempo ? `${song.tempo} bpm` : ''}</span>
             <span className="text-xs text-ink-faint w-14 text-right">{song.style}</span>

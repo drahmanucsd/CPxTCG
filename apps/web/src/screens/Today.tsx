@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Link, useNavigate } from 'react-router';
-import { COURSES, STAGES, stageSpec, type Course, type StageId } from '@shed/engine';
-import { PC_NAMES_FLAT, builtinSongs } from '@shed/theory';
+import { COURSES, STAGES, TUNE_STAGE_BY_ID, stageSpec, type Course, type StageId, type TuneStageId } from '@shed/engine';
+import { PC_NAMES_FLAT, builtinSongs, difficultyOf } from '@shed/theory';
 import { db } from '../db';
 import { recentAttempts, streakDays } from '../lib/stats';
 import { courseProgress, nextStage } from '../lib/mastery';
@@ -28,7 +28,9 @@ export default function Today() {
   const songs = [...builtinSongs(), ...mine.map((m) => m.song)];
   const tunes = songs.map((s) => ({ song: s, t: tuneProgress(sessions, s.id) }));
   const due = dueTune(tunes.map((x) => x.t));
-  const dueSong = due ? tunes.find((x) => x.t.songId === due.songId)?.song : undefined;
+  // nothing in progress: suggest the easiest tune rather than the alphabetically first
+  const easiest = [...tunes].sort((a, b) => difficultyOf(a.song).score - difficultyOf(b.song).score)[0];
+  const dueSong = due ? tunes.find((x) => x.t.songId === due.songId)?.song : easiest?.song;
 
   const startStage = async (course: Course, s: StageId, keys?: number[]) => {
     const spec = { ...stageSpec(course, s, keys?.length ? { keys: keys as never } : {}), id: `course:${course.id}:${s}` };
@@ -37,12 +39,17 @@ export default function Today() {
     nav(`/drill/${spec.id}`);
   };
 
+  const tuneStageId: TuneStageId = dueSong ? (settings.tuneStage[dueSong.id] ?? 'listen') : 'listen';
+  const tuneStage = TUNE_STAGE_BY_ID[tuneStageId];
+
   const startTune = async () => {
     if (!dueSong) return;
+    if (tuneStageId === 'listen') { nav(`/tunes/${encodeURIComponent(dueSong.id)}`); return; }
     const spec = tuneDrillSpec(dueSong, {
       mode: 'changes', families: active.course.families, voiceLeading: 'off',
       band: { style: 'swing', bass: true, drums: true }, bpm: dueSong.tempo ?? 120,
       transpose: 0, range: null, passes: 2, halfTime: false,
+      melody: tuneStage.handSplit, reveal: tuneStage.reveal,
     });
     await db.drills.put({ id: spec.id, spec, createdAt: Date.now(), updatedAt: Date.now(), custom: false });
     nav(`/drill/${spec.id}`);
@@ -88,10 +95,10 @@ export default function Today() {
         <li className="card flex items-center gap-4">
           <Num n={weakKeys.length ? 3 : 2} />
           <div className="flex-1 min-w-0">
-            <div className="font-medium">{dueSong ? dueSong.title : 'Start a tune'}</div>
+            <div className="font-medium">{dueSong ? `${dueSong.title} — ${tuneStage.name.toLowerCase()}` : 'Start a tune'}</div>
             <div className="text-sm text-ink-dim truncate">
               {due?.status === 'rusty' ? `Known, but you have not played it for ${due.daysSince} days.`
-                : due?.status === 'learning' ? 'Still learning this one.'
+                : dueSong ? tuneStage.blurb
                 : 'Pick a standard and put this voicing on it.'}
             </div>
           </div>
