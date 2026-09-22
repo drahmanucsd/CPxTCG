@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { BackLink } from '../components/BackLink';
 import { useNavigate } from 'react-router';
 import { layoutChart, layoutToChartText, parseChartText, slug, type OcrWord, type ScanLayout } from '@shed/theory';
 import { canvasToBlob, fileToPages, ocrPage, type Page } from '../lib/ocr';
@@ -57,7 +58,8 @@ export default function Scan() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Scan a chart</h1>
+        <BackLink to="/tunes" label="Tunes" />
+        <h1 className="text-2xl font-semibold tracking-tight mt-1">Scan a chart</h1>
         <p className="text-ink-dim text-sm mt-1">Photograph or upload a lead-sheet page (image or PDF). The chord symbols are read on this device, laid into bars, and you fix anything it got wrong before saving. The page image stays local and becomes your practice view.</p>
       </div>
       <div className="card flex flex-wrap items-center gap-3">

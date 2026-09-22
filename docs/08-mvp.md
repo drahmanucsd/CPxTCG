@@ -26,6 +26,58 @@ That's the MVP: **3 rungs × 2 exercises, metronome, in-time grading, and a revi
 tells you which rung and which keys to work on.** Nine-tenths of the practice value of the whole
 app is in that grid.
 
+## The learning loop: three stages per rung
+
+Each rung is drilled in three stages. They differ only in **what ends a chord**, and that one
+switch changes what is being trained.
+
+| Stage | Clock | Chord ends when | What it trains | Move on when |
+|---|---|---|---|---|
+| 1. **Learn it** | none | you play it right | finding the shape at all | you can play all twelve, at any speed |
+| 2. **Until you get it** | running | you play it right; it repeats meanwhile | the shape *without losing the pulse* | repeats per chord ≈ 0 |
+| 3. **In time** | running | the bar ends, hit or miss | retrieval against a deadline | clean ≥ 90% at the target tempo |
+
+### Why two clocked stages instead of one
+
+Stage 3 alone is the trap. If you do not yet own the voicing, `onTime` gives you a wall of
+misses: the chord is gone before you find it, so **you never once play the correct thing**.
+Nothing is reinforced, and the session teaches you only that you are bad at it. Grading is not
+learning — you cannot get better at a shape you never successfully execute.
+
+Stage 2 fixes exactly that without giving up the clock. The click keeps running, the form keeps
+moving, but the chord comes round again — two bars, three bars — until you find it. Every chord
+ends with you having played the right notes in tempo at least once. The cost is recorded as
+`repeats` rather than hidden, so "I got it, but it took three bars" is a number that goes down
+over a week.
+
+Stage 3 is then the real thing: a tune does not wait for you. Failure here is cheap and
+informative rather than destructive, because by now you know the shapes.
+
+### It pairs with the four outcomes
+
+The two advance modes are the *training* counterpart of the diagnosis in `06-review-ux.md`, and
+the review screen's verdict maps straight onto them:
+
+- mostly **wrong / blank** → you are in stage 3 too early. Drop to stage 2.
+- mostly **timing** (right notes, late) → you know the shapes; stay in stage 3, drop the tempo.
+- mostly **clean** → raise the tempo, or move up a rung.
+
+That is the whole loop: the grader tells you which stage you should be in, and the stage tells
+you which mode ends the chord.
+
+### The known flaw, stated
+
+Repeating a single chord breaks the phrase. A ii-V-I is learned as a *unit* — the voice leading
+between the three chords is the actual content — and if the ii repeats three times before you
+get it, you never hear the ii-V-I. For progression drills, stage 2 should arguably repeat the
+**phrase** rather than the chord: fail anywhere in the ii-V-I, and the whole ii-V-I comes round
+again. The runner currently repeats the chord (`repeatCurrent`), which is right for random-chord
+drills and wrong for progressions. Fixing this means giving `advance: 'onCorrect'` a scope —
+chord or phrase — defaulting to phrase whenever the generator produces roman numerals.
+
+Stage 2 is also capped (`maxRepeats`, default 8) so one chord cannot eat a whole session; after
+the cap it records the failure and moves on.
+
 ## Definition of done
 
 - A preset exists for each of the six cells, named after the rung, not the mechanism.

@@ -70,6 +70,7 @@ export default function Drill() {
   const syncPoll = useRef<number | null>(null);
   const [showPage, setShowPage] = useState(true);
   const [metroOpen, setMetroOpen] = useState(false);
+  const abandoned = useRef(false);
   useEffect(() => {
     let url: string | null = null;
     if (spec?.song?.scan) void db.images.get(spec.song.scan.imageId).then((row) => { if (row) { url = URL.createObjectURL(row.blob); setPageUrl(url); } });
@@ -149,7 +150,7 @@ export default function Drill() {
     runner.on('hint', ({ level, target }) => { setView((v) => ({ ...v, hint: level })); if (level >= 3) playVoicing(target.voicing.notes); });
     runner.on('tempo', ({ bpm }) => setView((v) => ({ ...v, bpm })));
     runner.on('repeat', ({ repeats }) => setView((v) => ({ ...v, repeats, verdict: null, verdictFinal: false, latenessMs: null, flash: null })));
-    runner.on('end', ({ summary }) => { window.__shedTarget = null; bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
+    runner.on('end', ({ summary }) => { if (abandoned.current) return; window.__shedTarget = null; bandRef.current?.stop(); bandRef.current = null; speechRef.current?.stop(); speechRef.current = null; stemRef.current?.stop(); if (syncPoll.current) cancelAnimationFrame(syncPoll.current); void saveAndReview(spec, summary); });
     transport.on('beat', (b) => setView((v) => ({ ...v, beat: { bar: b.bar, beat: b.beat, countIn: b.countIn, index: b.index } })));
     if (spec.speak && speechSupported()) {
       const sp = new SpeechInput();
@@ -402,6 +403,7 @@ export default function Drill() {
         <div className="flex-1"><BeatPulse beats={beatsPerBar} current={view.beat.beat} countIn={view.beat.countIn} /></div>
       </div>
       <div className="px-4 flex items-center gap-3 text-xs text-ink-dim">
+        <button className="hover:text-ink" title="Leave without saving this run" onClick={() => { abandoned.current = true; runnerRef.current?.end(); nav(-1); }}>&larr; Leave</button>
         {spec.pacing.mode === 'timed' && (
           <button className="font-medium text-ink hover:text-accent tabular-nums" onClick={() => setMetroOpen(true)} title="Tempo and metronome (m)">{view.bpm} bpm ▾</button>
         )}

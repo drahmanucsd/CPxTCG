@@ -24,16 +24,18 @@ export function TimingStrip({ results, windowMs = 120, range = 300, medianMs }: 
       {[-range, 0, range].map((ms) => (
         <text key={ms} x={x(ms)} y={H - 4} fontSize={9} textAnchor={ms < 0 ? 'start' : ms > 0 ? 'end' : 'middle'} fill="#5b6570">{ms > 0 ? `+${ms} late` : ms < 0 ? `${ms} early` : 'on the beat'}</text>
       ))}
-      {pts.map((p, i) => (
-        <circle
-          key={i}
-          cx={x(p.ms)}
-          cy={12 + (i % rows) * ((H - 34) / (rows - 1))}
-          r={3.2}
-          fill={p.late ? 'var(--color-warn)' : 'var(--color-good)'}
-          opacity={0.85}
-        />
-      ))}
+      {pts.map((p, i) => {
+        const cy = 12 + (i % rows) * ((H - 34) / (rows - 1));
+        const fill = p.late ? 'var(--color-warn)' : 'var(--color-good)';
+        // a hit further out than the axis goes is drawn as an arrow at the edge, not as a dot
+        // sitting on the last tick — otherwise +900 ms reads as +300 ms
+        if (Math.abs(p.ms) > range) {
+          const dir = p.ms > 0 ? 1 : -1;
+          const tip = x(p.ms) + dir * 4;
+          return <polygon key={i} points={`${tip},${cy} ${tip - dir * 6},${cy - 3.4} ${tip - dir * 6},${cy + 3.4}`} fill={fill} opacity={0.85} />;
+        }
+        return <circle key={i} cx={x(p.ms)} cy={cy} r={3.2} fill={fill} opacity={0.85} />;
+      })}
       {medianMs !== undefined && (
         <line x1={x(medianMs)} y1={4} x2={x(medianMs)} y2={H - 14} stroke="var(--color-accent)" strokeWidth={2} strokeDasharray="3 2" />
       )}

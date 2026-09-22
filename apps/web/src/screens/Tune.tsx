@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { BackLink } from '../components/BackLink';
+import { useNavigate, useParams } from 'react-router';
 import { FAMILIES, formToChords, guideTones, resolveForm, sectionRanges, songKeyName, transposeSong, type Song } from '@shed/theory';
 import type { BandSpec } from '@shed/engine';
 import { ChordGrid, formBars, writtenBars } from '../components/ChordGrid';
@@ -61,7 +62,8 @@ export default function Tune() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-4">
         <div className="min-w-0">
-          <div className="label"><Link to="/tunes" className="hover:text-ink">Tunes</Link> / {song.source}</div>
+          <BackLink to="/tunes" label="Tunes" />
+          <div className="label mt-1">{song.source}</div>
           <h1 className="text-3xl font-semibold tracking-tight truncate">{song.title}</h1>
           <div className="text-ink-dim">{song.composer}</div>
         </div>

@@ -20,8 +20,30 @@ test('free drill: wrong then right advances; review saved', async ({ page }) => 
   await page.screenshot({ path: 'test-results/drill-good.png' });
   await page.getByRole('button', { name: 'End' }).click();
   await expect(page).toHaveURL(/\/review\//);
-  await expect(page.getByText('Session review')).toBeVisible();
+  await expect(page.getByText('Verdict')).toBeVisible();
   await page.screenshot({ path: 'test-results/review.png' });
+});
+
+test('review names the four outcomes and separates late from wrong', async ({ page }) => {
+  await page.goto('/drill/rung1-iiVI');
+  await page.getByRole('button', { name: 'Start' }).click();
+  await page.waitForFunction(() => !!window.__shedTarget, null, { timeout: 15000 });
+  // chord 1: right notes, right away. chord 2: right notes, deliberately late.
+  const first = await page.evaluate(() => window.__shedTarget!);
+  await page.evaluate((ns) => window.__shed!.chord(ns as number[]), first.notes);
+  await page.waitForFunction((i) => (window.__shedTarget?.index ?? -1) > (i as number), first.index, { timeout: 10000 });
+  const second = await page.evaluate(() => window.__shedTarget!);
+  await page.waitForTimeout(900); // well outside the +-120 ms window at 80 bpm
+  await page.evaluate((ns) => window.__shed!.chord(ns as number[]), second.notes);
+  await page.waitForFunction((i) => (window.__shedTarget?.index ?? -1) > (i as number), second.index, { timeout: 10000 });
+  await page.getByRole('button', { name: 'End' }).click();
+  await expect(page).toHaveURL(/\/review\//);
+  for (const label of ['Clean', 'Late / early', 'Wrong notes', 'Blank']) {
+    await expect(page.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(page.getByText('Timing')).toBeVisible();
+  await expect(page.getByText('Where it broke')).toBeVisible();
+  await page.screenshot({ path: 'test-results/review-outcomes.png', fullPage: true });
 });
 
 test('timed drill runs a count-in and grades on the beat', async ({ page }) => {
