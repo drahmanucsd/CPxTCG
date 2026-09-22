@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeSong, findCadences, inferKey, romanPerBar } from '../src/analysis.js';
+import { analyzeSong, difficultyOf, findCadences, inferKey, romanPerBar } from '../src/analysis.js';
 import { parseChord } from '../src/chord.js';
 import { builtinSongs } from '../src/library.js';
 import { keyName } from '../src/roman.js';
@@ -77,5 +77,25 @@ describe('song analysis', () => {
       expect(a.summary, s.title).toMatch(/\d+ bars/);
       expect(a.sections.length, s.title).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('difficulty', () => {
+  const d = (t: string) => difficultyOf(song(t));
+  it('orders the library the way these tunes are actually taught', () => {
+    // the point of the score: a beginner should not be handed Body and Soul
+    expect(d('Ja-Da').score).toBeLessThan(d('Body and Soul').score);
+    expect(d('Indiana').score).toBeLessThan(d('Georgia on My Mind').score);
+    expect(d('Body and Soul').score).toBeGreaterThanOrEqual(4);
+    expect(d('Ja-Da').score).toBe(1);
+  });
+  it('uses the whole 1-5 range rather than bunching everything together', () => {
+    const scores = builtinSongs().map((s) => difficultyOf(s).score);
+    expect(new Set(scores).size).toBeGreaterThanOrEqual(3);
+    expect(Math.min(...scores)).toBe(1);
+    expect(Math.max(...scores)).toBeGreaterThanOrEqual(4);
+  });
+  it('explains itself', () => {
+    expect(d('Body and Soul').reasons.length).toBeGreaterThan(0);
   });
 });

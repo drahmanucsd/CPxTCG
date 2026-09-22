@@ -189,6 +189,81 @@ export function analyzeSong(song: Song): SongAnalysis {
 }
 
 /** Roman numerals per form bar, relative to the local section key rather than the tune's key. */
+export interface Difficulty {
+  /** 1 (first tune) … 5 (late) */
+  score: number;
+  label: string;
+  /** the things that made it hard or easy, for display */
+  reasons: string[];
+  chordsPerBar: number;
+  distinctChords: number;
+  keyCentres: number;
+  /** fraction of chords that sit inside a ii-V-I — familiar shapes make a tune easier */
+  inCadences: number;
+  outside: number;
+}
+
+const DIFF_LABEL = ['', 'first tune', 'easy', 'moderate', 'hard', 'late'];
+
+/**
+ * How hard this tune is to learn, from its own harmony. Used to order the library, so a beginner
+ * is not handed Body and Soul because it is alphabetically early.
+ */
+export function difficultyOf(song: Song, a: SongAnalysis = analyzeSong(song)): Difficulty {
+  const form = resolveForm(song);
+  const chords = allChords(form);
+  const bars = Math.max(1, form.length);
+  const chordsPerBar = chords.length / bars;
+  const distinct = new Set(chords.map((c) => `${c.chord.root}:${qualityClass(c.chord)}`)).size;
+
+  const inCadence = new Set<number>();
+  for (const c of a.cadences) for (let i = c.from; i <= c.to; i++) inCadence.add(i);
+  const inCadences = chords.length ? chords.filter((c) => inCadence.has(c.formIndex)).length / chords.length : 0;
+
+  // chords that are not plain diatonic sevenths: diminished, altered, and anything borrowed
+  const outside = chords.filter((c) => ['dim7', 'alt', 'minmaj7', 'aug7'].includes(qualityClass(c.chord))).length;
+  const repeats = a.sections.filter((x) => x.sameAs).length / Math.max(1, a.sections.length);
+  const tempo = song.tempo ?? 140;
+
+  // Weights calibrated against the built-in library so the order matches how these tunes are
+  // actually taught: Ja-Da and Indiana first, Body and Soul and Georgia last.
+  let score = 1;
+  const reasons: string[] = [];
+
+  // harmonic rhythm is the single biggest factor in how hard a tune is to comp
+  score += Math.min(2.2, Math.max(0, (chordsPerBar - 1) * 2.2));
+  if (chordsPerBar >= 1.8) reasons.push('two chords a bar or more');
+  else if (chordsPerBar >= 1.35) reasons.push('busy in places');
+
+  score += Math.min(1.4, Math.max(0, (distinct - 8) * 0.075));
+  if (distinct >= 22) reasons.push(`${distinct} different chords`);
+
+  if (a.keys.length >= 3) { score += 1.1; reasons.push(`${a.keys.length} key centres`); }
+  else if (a.keys.length === 2) { score += 0.5; reasons.push('changes key once'); }
+
+  const outsideRate = chords.length ? outside / chords.length : 0;
+  score += Math.min(1.2, outsideRate * 6);
+  if (outsideRate >= 0.08) reasons.push('diminished and altered chords');
+
+  if (tempo <= 85) { score += 0.7; reasons.push('ballad: every chord is exposed'); }
+  else if (tempo >= 220) { score += 0.4; reasons.push('fast'); }
+
+  // Familiarity and repetition make a tune easier to LEARN, but they cannot rescue a dense
+  // ballad — Body and Soul is full of ii-V-Is and is still nobody's first tune.
+  const relief = Math.min(1.0, (inCadences > 0.5 ? 0.5 : 0) + (repeats >= 0.5 ? 0.5 : 0));
+  score -= relief * Math.max(0.25, 1 - Math.max(0, chordsPerBar - 1));
+  if (inCadences > 0.5) reasons.push('mostly ii-V-Is you already know');
+  if (repeats >= 0.5) reasons.push('sections repeat');
+
+  const clamped = Math.max(1, Math.min(5, Math.round(score)));
+  return {
+    score: clamped, label: DIFF_LABEL[clamped]!, reasons,
+    chordsPerBar: Math.round(chordsPerBar * 100) / 100,
+    distinctChords: distinct, keyCentres: a.keys.length,
+    inCadences: Math.round(inCadences * 100) / 100, outside,
+  };
+}
+
 export function romanPerBar(song: Song, analysis: SongAnalysis): Array<string | null> {
   const form = resolveForm(song);
   return form.map((b) => {
