@@ -201,6 +201,78 @@ describe('DrillRunner — timed mode', () => {
     expect(r.ok).toBe(true);
     runner.end();
   });
+  it('grades one hand only when a split is set, so a melody does not fail the chord', () => {
+    const clock = new ManualClock();
+    const timers = new ManualTimers(clock);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 2 }, hands: { grade: 'below' } };
+    const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    let t: Target | null = null;
+    const ok: boolean[] = [];
+    runner.on('target', (e) => { t = e.target; });
+    runner.on('verdict', (e) => ok.push(e.verdict.ok));
+    runner.start();
+    const lh = t!.voicing.notes;
+    // the whole left-hand voicing plus a melody note above it
+    play(capture, [...lh, 84], clock.now(), timers, clock);
+    expect(ok).toEqual([true]);
+    // the melody note is not recorded as something you played wrong
+    expect(runner.resultsSoFar[0]!.playedNotes).toEqual(lh);
+  });
+  it('a wrong note below the split still fails even with a melody above it', () => {
+    const clock = new ManualClock();
+    const timers = new ManualTimers(clock);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 2 }, hands: { grade: 'below' } };
+    const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    let t: Target | null = null;
+    const ok: boolean[] = [];
+    runner.on('target', (e) => { t = e.target; });
+    runner.on('verdict', (e) => ok.push(e.verdict.ok));
+    runner.start();
+    // drop a note out of the voicing, keep the melody: the graded hand is still wrong
+    play(capture, [...t!.voicing.notes.slice(1), 84], clock.now(), timers, clock);
+    expect(ok).toEqual([false]);
+  });
+  it('reports which notes move from the previous voicing', () => {
+    const clock = new ManualClock();
+    const timers = new ManualTimers(clock);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 3 } };
+    const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    const targets: Target[] = [];
+    runner.on('target', (e) => targets.push(e.target));
+    runner.start();
+    expect(targets[0]!.moved).toEqual([]);           // nothing to move from on the first chord
+    play(capture, targets[0]!.voicing.notes, clock.now(), timers, clock);
+    timers.advance(0.5);
+    const second = targets[1]!;
+    // ii -> V voice-led: most notes are held, only one or two move
+    expect(second.moved.length + second.held.length).toBe(second.voicing.notes.length);
+    expect(second.held.length, 'voice leading should hold most notes').toBeGreaterThan(0);
+    expect(second.moved.every((n) => !targets[0]!.voicing.notes.includes(n))).toBe(true);
+  });
+  it('measures the tempo actually played in free time', () => {
+    const clock = new ManualClock();
+    const timers = new ManualTimers(clock);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 5 }, pacing: { ...PRESET_BY_ID['learn-rootless-iiVI']!.pacing, holdMs: 0 } };
+    const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    let t: Target | null = null;
+    let summary: import('../src/drill.js').DrillSummary | null = null;
+    runner.on('target', (e) => { t = e.target; });
+    runner.on('end', (e) => { summary = e.summary; });
+    runner.start();
+    // one chord every 2 s, 4 beats each => 2 beats/s => 120 bpm
+    for (let i = 0; i < 5; i++) {
+      play(capture, t!.voicing.notes, clock.now(), timers, clock);
+      timers.advance(2 - 0.17);
+    }
+    timers.advance(1);
+    expect(summary).not.toBeNull();
+    expect(summary!.measuredBpm).toBeGreaterThan(110);
+    expect(summary!.measuredBpm).toBeLessThan(130);
+  });
   it('every preset constructs and yields a first target', () => {
     for (const p of PRESETS) {
       const { clock, transport } = makeTransport(p.pacing.bpm || 100, 0);

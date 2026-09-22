@@ -90,6 +90,16 @@ export interface DrillSpec {
   backing?: { kind: 'youtube'; videoId: string; anchorSec?: number; bpm?: number } | { kind: 'record'; recordId: string; anchorSec?: number; bpm?: number };
   /** "Name it & play it": the player must also say the chord name; graded separately. */
   speak?: boolean;
+  /**
+   * Grade one hand only. Notes on the other side of the split are ignored, which is what lets
+   * you play a melody over a left-hand voicing without the melody failing the chord.
+   * Default (undefined) grades everything played.
+   *
+   * `split` is optional and usually should be: a left-hand rootless voicing straddles middle C,
+   * so a fixed split cuts the voicing in half. Left out, the split is derived per chord from the
+   * target itself — anything above the top note of the voicing is the other hand.
+   */
+  hands?: { grade: 'below' | 'above'; split?: number };
 }
 
 export interface Target {
@@ -105,6 +115,10 @@ export interface Target {
   windowEnd?: number;
   /** 1-based pass number through the progression */
   pass: number;
+  /** notes of this voicing that the previous voicing did not have — the ones your hand moves */
+  moved: number[];
+  /** notes held over from the previous voicing */
+  held: number[];
 }
 
 export interface TargetResult {
@@ -126,6 +140,10 @@ export interface TargetResult {
   assisted: boolean;
   /** extra windows the chord took in 'onCorrect' mode (0 = got it first time round) */
   repeats: number;
+  /** clock time of the attack that got it right — used to measure the tempo you actually played at */
+  attackTime?: number;
+  /** beats this chord occupied, so measured tempo can be derived from the gaps */
+  beats: number;
   hints: number;
   attempts: number;
   message: string;
@@ -171,6 +189,12 @@ export interface DrillSummary {
   avgLatenessMs: number | null;
   startBpm: number;
   finalBpm: number;
+  /**
+   * The tempo you actually played at, from the gaps between correct chords. In free time and in
+   * 'onCorrect' this is the number that matters: it is what the clock should be set to next.
+   * null when there were too few correct chords in a row to measure.
+   */
+  measuredBpm: number | null;
   hintsUsed: number;
   assisted: number;
 }
@@ -425,7 +449,10 @@ export class DrillRunner extends Emitter<DrillEvents> {
       for (const f of this.spec.families) candidates = candidates.concat(generateVoicings(chord, f, this.spec.realize));
       const voicing = chooseVoicing(prevT?.voicing ?? null, candidates) ?? fallbackVoicing(chord);
       const beats = this.spec.pacing.mode === 'timed' ? (this.spec.pacing.overrideBeats ? this.spec.pacing.beatsPerChord : got.pc.beats) : got.pc.beats;
-      this.targets.push({ index: idx, pc: got.pc, chord, voicing, candidates, beats, pass: got.pass });
+      const before = new Set(prevT?.voicing.notes ?? []);
+      const moved = prevT ? voicing.notes.filter((n) => !before.has(n)) : [];
+      const held = prevT ? voicing.notes.filter((n) => before.has(n)) : [];
+      this.targets.push({ index: idx, pc: got.pc, chord, voicing, candidates, beats, pass: got.pass, moved, held });
     }
     return this.current < this.targets.length;
   }
@@ -452,13 +479,25 @@ export class DrillRunner extends Emitter<DrillEvents> {
     if (!r) {
       r = {
         index: t.index, chordText: formatChord(t.chord), chord: t.chord, family: t.voicing.family, label: t.voicing.label, ok: false, met: null,
-        latenessMs: null, timing: null, outcome: 'blank', assisted: false, repeats: 0,
+        latenessMs: null, timing: null, outcome: 'blank', assisted: false, repeats: 0, beats: t.beats,
         hints: 0, attempts: 0, message: '', playedNotes: [], targetNotes: t.voicing.notes, bpm: this.bpm, pass: t.pass,
       };
       if (t.pc.roman) r.roman = t.pc.roman;
       this.results.set(t.index, r);
     }
     return r;
+  }
+
+  /** The notes this drill is actually grading — the other hand is ignored, not marked wrong. */
+  gradedNotes(notes: number[], target?: Target): number[] {
+    const h = this.spec.hands;
+    if (!h) return notes;
+    const t = target ?? this.currentTarget;
+    const tn = t?.voicing.notes ?? [];
+    const split = h.split ?? (tn.length
+      ? (h.grade === 'below' ? Math.max(...tn) + 1 : Math.min(...tn))
+      : 60);
+    return h.grade === 'below' ? notes.filter((n) => n < split) : notes.filter((n) => n >= split);
   }
 
   private grade(t: Target, notes: number[]): Verdict {
@@ -476,7 +515,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
 
   private record(t: Target, verdict: Verdict, attempt: Attempt | null, latenessMs: number | null, final: boolean): void {
     const r = this.resultFor(t);
-    if (attempt) { r.attempts++; r.playedNotes = attempt.notes; }
+    if (attempt) { r.attempts++; r.playedNotes = this.gradedNotes(attempt.notes, t); if (verdict.ok) r.attackTime = attempt.attackTime; }
     r.ok = verdict.ok; r.met = verdict.met; r.message = verdict.message; r.latenessMs = latenessMs; r.bpm = this.bpm;
     r.timing = this.classifyTiming(t, latenessMs);
     if (verdict.ok) {
@@ -495,7 +534,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
     if (this.spec.pacing.mode === 'free') {
       const t = this.currentTarget;
       if (!t || this.holdTimer !== null) return;
-      const v = this.grade(t, a.notes);
+      const v = this.grade(t, this.gradedNotes(a.notes, t));
       this.record(t, v, a, null, v.ok);
       if (v.ok) this.advanceFree(this.spec.pacing.holdMs ?? 350);
       return;
@@ -507,7 +546,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
     if (!t) return;
     const r = this.resultFor(t);
     if (r.ok) return; // already nailed it; ignore re-strikes
-    const v = this.grade(t, a.notes);
+    const v = this.grade(t, this.gradedNotes(a.notes, t));
     // in 'onCorrect' the chord repeats, so lateness is measured inside the current repetition
     const lateness = Math.round((attack - t.dueTime!) * 1000);
     this.record(t, v, a, lateness, v.ok);
@@ -606,12 +645,34 @@ export class DrillRunner extends Emitter<DrillEvents> {
       total: graded.length, correct: graded.filter((r) => r.ok).length,
       clean: outcomes.clean, outcomes, timing: timingStats(graded),
       avgLatenessMs: lat.length ? Math.round(lat.reduce((a, b) => a + b, 0) / lat.length) : null,
-      startBpm: this.startBpm, finalBpm: this.bpm, hintsUsed: graded.reduce((a, r) => a + r.hints, 0),
+      startBpm: this.startBpm, finalBpm: this.bpm, measuredBpm: measuredTempo(graded),
+      hintsUsed: graded.reduce((a, r) => a + r.hints, 0),
       assisted: graded.filter((r) => r.assisted).length,
     };
     this.setState('ended');
     this.emit('end', { summary });
   }
+}
+
+/**
+ * The tempo the player actually held, from the gaps between consecutive correct chords.
+ * Uses the median gap so one long pause (a thought, a hint) does not drag the answer down.
+ */
+export function measuredTempo(results: TargetResult[]): number | null {
+  const hits = results.filter((r) => r.attackTime !== undefined).sort((a, b) => a.index - b.index);
+  const perBeat: number[] = [];
+  for (let i = 1; i < hits.length; i++) {
+    const a = hits[i - 1]!, b = hits[i]!;
+    if (b.index !== a.index + 1) continue;       // not consecutive: the gap means nothing
+    const gap = b.attackTime! - a.attackTime!;
+    const beats = a.beats || 1;
+    if (gap <= 0 || gap > 30) continue;
+    perBeat.push(gap / beats);
+  }
+  if (perBeat.length < 3) return null;
+  perBeat.sort((x, y) => x - y);
+  const median = perBeat[Math.floor(perBeat.length / 2)]!;
+  return Math.max(20, Math.min(400, Math.round(60 / median)));
 }
 
 /** Median and IQR of the signed offsets of every chord whose notes were right. */

@@ -23,13 +23,14 @@ export function normalize(s: DrillSummary, timingWindowMs = 120): DrillSummary {
     if (r.outcome) return r;
     const timing = r.latenessMs === null || r.latenessMs === undefined ? null : Math.abs(r.latenessMs) <= timingWindowMs ? 'onTime' : r.latenessMs < 0 ? 'early' : 'late';
     const outcome: Outcome = r.ok ? (timing === null || timing === 'onTime' ? 'clean' : 'timing') : r.attempts > 0 ? 'wrong' : 'blank';
-    return { ...r, timing, outcome, assisted: r.ok && r.hints > 0, repeats: r.repeats ?? 0 };
+    return { ...r, timing, outcome, assisted: r.ok && r.hints > 0, repeats: r.repeats ?? 0, beats: r.beats ?? 4 };
   });
   const outcomes: Record<Outcome, number> = { clean: 0, timing: 0, wrong: 0, blank: 0 };
   for (const r of results) outcomes[r.outcome]++;
   return {
     ...s, results, outcomes, clean: outcomes.clean, timing: timingStats(results),
-    startBpm: s.startBpm ?? s.finalBpm, assisted: s.assisted ?? results.filter((r) => r.assisted).length,
+    startBpm: s.startBpm ?? s.finalBpm, measuredBpm: s.measuredBpm ?? null,
+    assisted: s.assisted ?? results.filter((r) => r.assisted).length,
   };
 }
 
