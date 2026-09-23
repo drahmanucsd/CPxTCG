@@ -22,6 +22,8 @@ function apiDev(): Plugin {
   };
 }
 
+const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ');
+
 export default defineConfig(({ mode }) => {
   // make a root .env available to the api/ functions running in the dev middleware
   Object.assign(process.env, loadEnv(mode, new URL('../../', import.meta.url).pathname, ''));
@@ -45,6 +47,7 @@ export default defineConfig(({ mode }) => {
       workbox: { globPatterns: ['**/*.{js,css,html,svg,woff2}'] },
     }),
   ],
+    define: { __BUILD__: JSON.stringify(BUILD_STAMP) },
     server: { port: 5173, host: true },
     build: { target: 'es2022' },
   };

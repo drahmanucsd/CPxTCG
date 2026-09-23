@@ -52,8 +52,8 @@ test('review names the four outcomes and separates late from wrong', async ({ pa
 test('timed drill runs a count-in and grades on the beat', async ({ page }) => {
   await page.goto('/drill/rootless-iiVI-4ths-120');
   await page.getByRole('button', { name: 'Start' }).click();
-  await expect(page.getByText('Count-in')).toBeVisible();
-  await expect(page.getByText('Count-in')).toBeHidden({ timeout: 5000 });
+  await expect(page.getByText('Counting in…')).toBeVisible();
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 5000 });
   await page.evaluate(() => window.__shed!.chord([53, 57, 60, 64]));
   await expect(page.getByText(/Exact|Right notes/)).toBeVisible();
   await page.screenshot({ path: 'test-results/drill-timed.png' });
@@ -119,7 +119,7 @@ test('tunes: library, tune page, play the changes with the band', async ({ page 
   await page.getByRole('button', { name: 'Play with the band', exact: true }).click();
   await expect(page.getByRole('heading', { name: /I Got Rhythm — play the changes/ })).toBeVisible();
   await page.getByRole('button', { name: 'Start' }).click();
-  await expect(page.getByText('Count-in')).toBeHidden({ timeout: 6000 });
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 6000 });
   await page.waitForTimeout(700);
   await page.screenshot({ path: 'test-results/tune-drill.png' });
   await page.getByRole('button', { name: 'End' }).click();

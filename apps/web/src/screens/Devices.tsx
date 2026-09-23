@@ -46,6 +46,22 @@ export default function Devices() {
 
       <LatencyCalibration />
 
+      <section className="card flex flex-wrap items-center gap-3 text-sm">
+        <div>
+          <div className="label">Build</div>
+          <div className="text-ink-dim tabular-nums mt-0.5">{__BUILD__}</div>
+        </div>
+        <button className="btn btn-ghost !py-1 ml-auto" onClick={() => {
+          void (async () => {
+            const regs = await navigator.serviceWorker?.getRegistrations?.() ?? [];
+            await Promise.all(regs.map((r) => r.unregister()));
+            const keys = await caches?.keys?.() ?? [];
+            await Promise.all(keys.map((k) => caches.delete(k)));
+            window.location.reload();
+          })();
+        }}>Force update</button>
+      </section>
+
 
       <section className="card space-y-4">
         <div className="label">Display</div>

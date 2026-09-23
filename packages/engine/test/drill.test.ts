@@ -344,6 +344,35 @@ describe('DrillRunner — timed mode', () => {
     expect(runner.resultsSoFar[0]!.outcome).toBe('blank');
     runner.end();
   });
+  it('voice leading off accepts either ordering of the family, in any octave', () => {
+    // the bug this guards: with voice leading off, playing the guide tones 7-3 instead of 3-7
+    // must pass, and so must the same shape moved an octave
+    const clock = new ManualClock();
+    const timers = new ManualTimers(clock);
+    const capture = new ChordCapture();
+    const spec: DrillSpec = {
+      ...PRESET_BY_ID['learn-rootless-iiVI']!, families: ['root37'], voiceLeading: 'off',
+      strictness: 'shape', generator: { kind: 'cycle', suffix: 'maj7', order: 'fourths' }, length: { reps: 3 },
+    };
+    const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
+    let t: Target | null = null;
+    const ok: boolean[] = [];
+    runner.on('target', (e) => { t = e.target; });
+    runner.on('verdict', (e) => ok.push(e.verdict.ok));
+    runner.start();
+    // whatever the drill picked, find the other ordering among the family's candidates
+    const shown = t!.voicing;
+    const other = t!.candidates.find((c) => c.label !== shown.label);
+    expect(other, 'root37 should offer both 3-7 and 7-3').toBeDefined();
+    play(capture, other!.notes, clock.now(), timers, clock);
+    expect(ok, `played ${other!.label} against a drill showing ${shown.label}`).toEqual([true]);
+    // and an octave up is still the same voicing
+    timers.advance(0.5);
+    const next = t!.candidates[0]!;
+    play(capture, next.notes.map((n) => n + 12), clock.now(), timers, clock);
+    expect(ok[ok.length - 1]).toBe(true);
+    runner.end();
+  });
   it('every preset constructs and yields a first target', () => {
     for (const p of PRESETS) {
       const { clock, transport } = makeTransport(p.pacing.bpm || 100, 0);

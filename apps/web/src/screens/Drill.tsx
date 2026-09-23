@@ -460,7 +460,7 @@ export default function Drill() {
       )}
       {/* chord display */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 gap-6">
-        {view.state === 'countIn' && <div className="label text-warn">Count-in</div>}
+        {view.state === 'countIn' && <div className="label text-warn">Counting in…</div>}
         <div className="flex items-baseline justify-center gap-[6vw] w-full">
           <div className="w-[18vw] text-right text-[6vw] leading-none text-ink-faint truncate">
             {run?.resultsSoFar.at(-1) && t && run.resultsSoFar.at(-1)!.index === t.index - 1 ? <ChordText chord={run.resultsSoFar.at(-1)!.chord} style={settings.displayStyle} /> : null}
