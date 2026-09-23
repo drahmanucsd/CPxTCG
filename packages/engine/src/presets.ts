@@ -10,7 +10,7 @@ const free: DrillSpec['pacing'] = { mode: 'free', bpm: 0, beatsPerChord: 4, coun
  * Everything below these is extra.
  */
 const RUNGS = [
-  { n: 1, id: 'root37', families: ['root37'], label: 'RH root + LH 3-7', bpm: 80, suffixes: ['maj7', 'm7', '7'] },
+  { n: 1, id: 'root37', families: ['root37'], label: 'LH root + RH 3-7', bpm: 80, suffixes: ['maj7', 'm7', '7'] },
   { n: 2, id: 'guide', families: ['guide'], label: 'LH 3-7', bpm: 100, suffixes: ['maj7', 'm7', '7', 'm7b5'] },
   { n: 3, id: 'rootless', families: ['rootlessA', 'rootlessB'], label: 'Rootless A/B', bpm: 120, suffixes: ['maj7', 'm7', '7', 'm7b5', 'dim7', '6', 'm6'] },
 ] as const;

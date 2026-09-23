@@ -61,8 +61,8 @@ const FIRST_KEYS: PitchClass[] = [0, 5, 10, 3, 8, 7];
 
 export const COURSES: Course[] = [
   {
-    id: 'root37', name: 'RH root, LH 3-7', order: 1,
-    blurb: 'The smallest thing that sounds like jazz piano. Left hand learns the guide tones while the right hand only has to find the key.',
+    id: 'root37', name: 'LH root, RH 3-7', order: 1,
+    blurb: 'The smallest thing that sounds like jazz piano. The root anchors the key in the bass; the right hand plays the two notes that say what the chord is.',
     families: ['root37'], qualities: ['maj7', 'm7', '7'], voiceLeading: 'strict', targetBpm: 80, firstKeys: FIRST_KEYS,
   },
   {

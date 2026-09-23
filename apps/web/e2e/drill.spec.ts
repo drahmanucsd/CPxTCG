@@ -65,7 +65,7 @@ test('today, drills, progress, devices render', async ({ page }) => {
   await page.goto('/');
   // Today leads with the course you are on and one Start button
   await expect(page.getByRole('button', { name: 'Start' })).toBeVisible();
-  await expect(page.getByText('RH root, LH 3-7')).toBeVisible();
+  await expect(page.getByText('LH root, RH 3-7')).toBeVisible();
   await page.screenshot({ path: 'test-results/today.png' });
   await page.goto('/drills');
   await expect(page.getByText('Rootless ii-V-I · cycle of 4ths · 120')).toBeVisible();
@@ -82,7 +82,7 @@ test('voicings: the ladder, a course, and its stages', async ({ page }) => {
   await page.goto('/voicings');
   await expect(page.getByText('Ten families, in order')).toBeVisible();
   await expect(page.getByText('0/12 keys').first()).toBeVisible();
-  await page.getByText('RH root, LH 3-7').first().click();
+  await page.getByText('LH root, RH 3-7').first().click();
   await expect(page).toHaveURL(/\/voicings\/root37/);
   // stage 1 is a screen, not a drill: the shape and the sound before you play
   await expect(page.getByText('Show me').first()).toBeVisible();

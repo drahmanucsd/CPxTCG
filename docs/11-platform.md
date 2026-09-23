@@ -134,6 +134,6 @@ Not done: transposing a tune as a graded exercise (the transpose control exists,
 
 ## Open question for a teacher
 
-Take the three rungs in `08-mvp.md` (RH root + LH 3-7 → LH guide tones → rootless A/B) to a
+Take the three rungs in `08-mvp.md` (LH root + RH 3-7 → LH guide tones → rootless A/B) to a
 lesson and ask whether that order is right. It is a two-minute question for someone who teaches
 this, and it is currently an assumption with nothing behind it (`10-spec.md` §14).

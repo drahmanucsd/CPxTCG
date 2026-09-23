@@ -9,7 +9,7 @@ loop that is genuinely useful, so the rest can be judged against it.
 
 | Rung | Setup | Family id | Why it's first |
 |---|---|---|---|
-| 1 | **RH root, LH 3-7** | `root37` | The smallest thing that sounds like jazz piano. The left hand learns the guide tones; the right hand only has to find the root, so there's spare attention for the clock. |
+| 1 | **LH root, RH 3-7** | `root37` | The smallest thing that sounds like jazz piano. The root anchors the key in the bass where it belongs; the right hand plays the two notes that decide what the chord is. |
 | 2 | **LH 3-7 alone** | `guide` | Same shapes, no anchor. Now you have to hear the voice leading rather than see the root. |
 | 3 | **Both rootless forms, A and B** | `rootlessA` + `rootlessB` | The real working left hand. Voice-led so the app chooses A or B by whichever moves less. |
 
@@ -94,11 +94,14 @@ Tunes, backing tracks, scan import, speech, stems, progress heatmaps beyond key 
 built, all fine, none of it on the critical path to "I can play rootless ii-V-Is in twelve keys
 at 120". Docs `06` and `07` cover where those go next.
 
-## Interpretation note
+## Resolved: which hand plays what
 
-The rung names come from a one-line description: *"right hand root lh 37, both A/B, 2-5-1 all 12
-keys in time, and random chord + quality in all 12 with that voicing."* I've read "RH root, LH
-3-7" literally — right hand plays the root as a single note, left hand plays the 3rd and 7th —
-which is a standard first two-hand setup and makes rung 1 strictly easier than rung 2. If you
-meant left-hand root under a right-hand 3-7, it's a one-line change to the family template
-(`1 | 3 7` instead of `3 7 | 1`) and both can ship as separate rungs.
+This was built the other way round first — right hand on the root, left hand on the guide tones —
+from a literal reading of a one-line brief, and flagged here as an assumption at the time. It was
+wrong. **The root goes in the left hand and the guide tones in the right**, which is how every
+method teaches the first two-hand setup: the bass register is where a root belongs, and the third
+and seventh are the notes that decide what the chord actually is, so they are what the working
+hand should be learning to move.
+
+Corrected 2026-09-22 in `packages/theory/src/voicings.ts` (`root37` templates are now `1 | 3 7`,
+left box in the bass register) with the golden tests updated to match.

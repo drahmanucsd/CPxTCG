@@ -72,7 +72,7 @@ There is no automatic or per-device measurement.
 
 | Group | Families |
 |---|---|
-| basic (5) | `close`, `inversions`, `shell`, `guide` (3-7), `root37` (RH root + LH 3-7) |
+| basic (5) | `close`, `inversions`, `shell`, `guide` (3-7), `root37` (LH root + RH 3-7) |
 | rootless (4) | `rootlessA`, `rootlessB`, `rootless3A`, `rootless3B` |
 | drop (3) | `drop2`, `drop3`, `drop24` |
 | quartal (3) | `quartal`, `quartal3`, `soWhat` |
@@ -288,8 +288,9 @@ An evaluator should treat each of these as an open question, not a decision:
 - That a pianist wants chord-by-chord grading at all, rather than looser feedback.
 - That "right notes, wrong time" is a useful distinction to surface to a learner.
 - That raising tempo after a clean pass is the correct progression mechanic.
-- That the three-rung ladder (RH root + LH 3-7 → guide tones → rootless A/B) matches how jazz
-  piano is actually taught.
+- That the ladder order (LH root + RH 3-7 → guide tones → shells → rootless A/B) matches how jazz
+  piano is actually taught. The hand assignment inside rung 1 was wrong until 2026-09-22 and is
+  now corrected; the *order of the rungs* is still unverified.
 - That drilling all twelve keys in one session beats concentrating on a few.
 - That a heatmap of weak keys is something a player will act on correctly.
 - That local-only storage with no account is a feature rather than an obstacle.

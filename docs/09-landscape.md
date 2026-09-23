@@ -108,7 +108,7 @@ jazz repertoire, and how do they license it? Pricing and free tiers.
 ## 3. The jazz-education market and what learners say is missing — *not yet written*
 
 Questions outstanding: Open Studio, PianoGroove, Jazzadvice, Learn Jazz Standards, Jazz Piano
-School — what do they charge and what is the structure? Is "RH root + LH 3-7 → guide tones →
+School — what do they charge and what is the structure? Is "LH root + RH 3-7 → guide tones →
 rootless A/B" the standard teaching order in Levine / DeGreg / the established methods, or is
 `08-mvp.md`'s ladder idiosyncratic? What do r/JazzPiano and app-store reviews say people wish
 existed, and where do people quit? Do teachers endorse or warn against twelve-keys-with-a-rising-

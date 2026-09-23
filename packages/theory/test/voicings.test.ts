@@ -20,9 +20,10 @@ describe('golden voicings in C', () => {
     ['Cmaj7', 'shell', 'C3 E3 B3'],
     ['G7', 'shell', 'G3 B3 F4'],
     ['Cmaj7', 'guide', 'E3 B3'],
-    ['Cmaj7', 'root37', 'E3 B3 C4'],
-    ['Dm7', 'root37', 'F3 C4 D4'],
-    ['G7', 'root37', 'B3 F4 G4'],
+    // LH root in the bass, RH guide tones above it
+    ['Cmaj7', 'root37', 'C3 E3 B3'],
+    ['Dm7', 'root37', 'D3 F3 C4'],
+    ['G7', 'root37', 'G2 B3 F4'],
     ['Dm7', 'soWhat', 'D3 G3 C4 F4 A4'],
     ['Cmaj7', 'kennyBarron', 'C3 G3 D4 E4 B4 Gb5'],
     ['Dm7', 'kennyBarron', 'D3 A3 E4 F4 C5 G5'],
