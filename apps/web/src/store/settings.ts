@@ -14,7 +14,7 @@ export interface Settings {
   visualPulse: boolean;
   speakPrompts: boolean;
   /** where hints appear: as text under the chord, on the keyboard, or both */
-  hintStyle: 'text' | 'keyboard' | 'both';
+  hintStyle: 'text' | 'keyboard' | 'both' | 'off';
   level: 'learning' | 'tunes' | 'fluency';
   /** which stage of each voicing course you are on */
   courseStage: Record<string, import('@shed/engine').StageId>;

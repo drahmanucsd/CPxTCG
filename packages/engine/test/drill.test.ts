@@ -273,12 +273,12 @@ describe('DrillRunner — timed mode', () => {
     expect(summary!.measuredBpm).toBeGreaterThan(110);
     expect(summary!.measuredBpm).toBeLessThan(130);
   });
-  it('auto-hints: a fixed level shows immediately, adaptive rises only when you stall', () => {
+  it("hints: 'always' shows immediately, 'adaptive' rises only when you stall, 'off' never", () => {
     const fixed = (() => {
       const clock = new ManualClock();
       const timers = new ManualTimers(clock);
       const capture = new ChordCapture();
-      const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 2 }, autoHint: 2 };
+      const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 2 }, hints: 'always' };
       const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
       const levels: number[] = [];
       runner.on('hint', (e) => levels.push(e.level));
@@ -290,7 +290,7 @@ describe('DrillRunner — timed mode', () => {
     const clock = new ManualClock();
     const timers = new ManualTimers(clock);
     const capture = new ChordCapture();
-    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 3 }, autoHint: 'adaptive', stallMs: 1000 };
+    const spec: DrillSpec = { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 3 }, hints: 'adaptive', stallMs: 1000 };
     const runner = new DrillRunner({ spec, clock, capture, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, setInterval: timers.setInterval, clearInterval: timers.clearInterval });
     const levels: number[] = [];
     let t: Target | null = null;
@@ -310,6 +310,22 @@ describe('DrillRunner — timed mode', () => {
     timers.advance(1.05);
     expect(levels).toEqual([1, 2, 1]);
     runner.end();
+
+    // 'off' gives nothing, and refuses even an explicit request
+    const c3 = new ManualClock();
+    const t3 = new ManualTimers(c3);
+    const off = new DrillRunner({
+      spec: { ...PRESET_BY_ID['learn-rootless-iiVI']!, length: { reps: 2 }, hints: 'off', stallMs: 500 },
+      clock: c3, capture: new ChordCapture(),
+      setTimeout: t3.setTimeout, clearTimeout: t3.clearTimeout, setInterval: t3.setInterval, clearInterval: t3.clearInterval,
+    });
+    const offLevels: number[] = [];
+    off.on('hint', (e) => offLevels.push(e.level));
+    off.start();
+    t3.advance(5);
+    expect(offLevels).toEqual([]);
+    expect(off.hint()).toBe(0);
+    off.end();
   });
   it("skip gets you out of a repeating chord in 'onCorrect'", () => {
     const { clock, timers, transport } = makeTransport(120, 0);

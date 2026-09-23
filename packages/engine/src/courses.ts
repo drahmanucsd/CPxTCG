@@ -149,19 +149,19 @@ export function stageSpec(course: Course, stage: StageId, opts: StageOpts = {}):
       return {
         ...base, name: `${course.name} · copy it`, description: STAGE_BY_ID.copy.blurb,
         generator: iiVI, pacing: free(250), lookAhead: 'always', length: { passes: 1 },
-        autoHint: 2, // the notes are on the keyboard before you play
+        hints: 'always', // the notes are on the keyboard before you play
       };
     case 'find':
       return {
         ...base, name: `${course.name} · find it`, description: STAGE_BY_ID.find.blurb,
         generator: iiVI, pacing: free(), lookAhead: 'always', length: { passes: 1 },
-        autoHint: 'adaptive',
+        hints: 'adaptive',
       };
     case 'waits':
       return {
         ...base, name: `${course.name} · in time, waiting`, description: STAGE_BY_ID.waits.blurb,
         generator: iiVI, pacing: timed(Math.round(course.targetBpm * 0.75), 'onCorrect'),
-        lookAhead: 'always', length: { passes: 1 }, autoHint: 'adaptive',
+        lookAhead: 'always', length: { passes: 1 }, hints: 'adaptive',
       };
     case 'clock':
     case 'apply':

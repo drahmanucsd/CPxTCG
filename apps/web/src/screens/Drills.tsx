@@ -166,7 +166,21 @@ function Editor({ spec: initialSpec, onClose }: { spec: DrillSpec; onClose: () =
               <option value="symbol">Chord symbol</option><option value="roman">Roman numeral (when available)</option><option value="hidden">Hidden until you play</option>
             </select>
           </Row>
-          <Row label="Name it & play it"><label className="text-sm"><input type="checkbox" checked={!!s.speak} onChange={(e) => up({ speak: e.target.checked })} /> say the chord name out loud too (voice recognition; pairs well with roman-numeral prompts)</label></Row>
+          <Row label="Hints">
+            <div className="space-y-1">
+              <select className="select" value={s.hints ?? 'onRequest'} onChange={(e) => up({ hints: e.target.value as DrillSpec['hints'] })}>
+                <option value="off">Off — never show me the notes</option>
+                <option value="onRequest">Only when I ask (h)</option>
+                <option value="adaptive">When I stall on a chord</option>
+                <option value="always">Always — notes on the keyboard</option>
+              </select>
+              <div className="text-xs text-ink-faint">
+                {(s.hints ?? 'onRequest') === 'off'
+                  ? 'No hint button, no "play it", and a miss will not show you the shape. This is the mode for testing yourself.'
+                  : 'A miss reveals the shape on the keyboard. Choose Off to stop that.'}
+              </div>
+            </div>
+          </Row>
         </Section>
 
         <Section title="Pacing">

@@ -90,12 +90,14 @@ export interface DrillSpec {
   /** ms window before the beat in which an attack counts for that beat */
   earlyMs?: number;
   /**
-   * Hints without the learner asking.
-   *   number     — every chord starts at this hint level (stage "copy": the notes are just there)
-   *   'adaptive' — level 0, rising one step each time you stall on the chord
-   * See docs/11-platform.md: hints should fade with performance, not be a setting.
+   * How much help this drill gives.
+   *   'off'       — nothing, ever: no hint button, and a miss does not reveal the shape either.
+   *                 This is the mode for testing yourself.
+   *   'onRequest' — only when you ask (h); a miss reveals the shape. The default.
+   *   'adaptive'  — nothing up front, rising a level each time you stall on a chord.
+   *   'always'    — the notes are on the keyboard before you play ("copy it").
    */
-  autoHint?: number | 'adaptive';
+  hints?: HintMode;
   /** 'adaptive': ms of not getting it before the next hint appears. Default 4000. */
   stallMs?: number;
   /** show roman numerals instead of chord symbols when available */
@@ -106,8 +108,6 @@ export interface DrillSpec {
   /** External backing: click muted. YouTube auto-syncs when anchorSec+bpm are known (else tap on beat 1); a record is
    *  the user's own audio (stems) played on the audio clock, sample-accurate once anchored. */
   backing?: { kind: 'youtube'; videoId: string; anchorSec?: number; bpm?: number } | { kind: 'record'; recordId: string; anchorSec?: number; bpm?: number };
-  /** "Name it & play it": the player must also say the chord name; graded separately. */
-  speak?: boolean;
   /**
    * Grade one hand only. Notes on the other side of the split are ignored, which is what lets
    * you play a melody over a left-hand voicing without the melody failing the chord.
@@ -218,6 +218,8 @@ export interface DrillSummary {
   hintsUsed: number;
   assisted: number;
 }
+
+export type HintMode = 'off' | 'onRequest' | 'adaptive' | 'always';
 
 export type DrillState = 'idle' | 'countIn' | 'running' | 'paused' | 'ended';
 
@@ -448,7 +450,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
   /** Request a hint for the current chord; returns the new hint level (1..3). */
   hint(): number {
     const t = this.currentTarget;
-    if (!t) return 0;
+    if (!t || this.spec.hints === 'off') return 0;
     const r = this.resultFor(t);
     r.hints = Math.min(3, r.hints + 1);
     this.emit('hint', { target: t, level: r.hints });
@@ -516,11 +518,11 @@ export class DrillRunner extends Emitter<DrillEvents> {
   /** Hints the learner did not ask for: a fixed level, or one that rises as they stall. */
   private armHints(t: Target): void {
     this.clearStall();
-    const a = this.spec.autoHint;
-    if (a === undefined) return;
-    if (typeof a === 'number') {
+    const mode = this.spec.hints ?? 'onRequest';
+    if (mode === 'off' || mode === 'onRequest') return;
+    if (mode === 'always') {
       const r = this.resultFor(t);
-      r.hints = Math.max(r.hints, a);
+      r.hints = Math.max(r.hints, 2);
       this.emit('hint', { target: t, level: r.hints });
       return;
     }
@@ -676,7 +678,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
     r.ok = false; r.met = null; r.timing = null; r.latenessMs = null; r.outcome = 'blank'; r.message = '';
     this.emittedIndex = -1;
     this.assignBeats();
-    if (this.spec.autoHint === 'adaptive' && r.hints < 3) { r.hints += 1; this.emit('hint', { target: t, level: r.hints }); }
+    if (this.spec.hints === 'adaptive' && r.hints < 3) { r.hints += 1; this.emit('hint', { target: t, level: r.hints }); }
     this.emit('repeat', { target: t, repeats: r.repeats });
   }
 

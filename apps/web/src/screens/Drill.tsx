@@ -260,7 +260,7 @@ export default function Drill() {
       if (e.key === ' ') { e.preventDefault(); if (run.state === 'paused') run.resume(); else run.pause(); }
       else if (e.key === 'Escape') { run.pause(); }
       else if (e.key === 'ArrowRight' || e.key === 'Enter') { run.skip(); }
-      else if (e.key === 'h' || e.key === '?') { run.hint(); }
+      else if (e.key === 'h' || e.key === '?') { run.hint(); }   // a no-op when the drill has hints off
       else if (e.key === 'p' || e.key === 'l') { const t = run.currentTarget; if (t) playVoicing(t.voicing.notes); }
       else if (e.key === '-') { run.setBpm(Math.max(30, run.bpm - 1)); }
       else if (e.key === '=') { run.setBpm(Math.min(300, run.bpm + 1)); }
@@ -308,10 +308,11 @@ export default function Drill() {
   const showNext = spec?.lookAhead === 'always' || (spec?.lookAhead === 'lastBeat' && t && view.beat.index >= (t.beatIndex ?? 0) + t.beats - 1);
   const showDiff = view.verdict && !view.verdict.ok;
   // hints can land as text, on the keyboard, or both (Settings → Hints)
-  const hintOnKeys = settings.hintStyle !== 'text';
-  const hintAsText = settings.hintStyle !== 'keyboard';
-  // a miss reveals the shape: you cannot learn from being told "no" and shown nothing
-  const revealOnMiss = !!view.verdict && !view.verdict.ok && view.verdictFinal;
+  const hintsOff = spec?.hints === 'off' || settings.hintStyle === 'off';
+  const hintOnKeys = !hintsOff && settings.hintStyle !== 'text';
+  const hintAsText = !hintsOff && settings.hintStyle !== 'keyboard';
+  // a miss reveals the shape — unless the drill is explicitly testing you
+  const revealOnMiss = !hintsOff && !!view.verdict && !view.verdict.ok && view.verdictFinal;
   const hintNotes = t && (revealOnMiss || (hintOnKeys && view.hint >= 2) || view.hint >= 3) ? t.voicing.notes : [];
   const hintTones = t && tones && hintOnKeys && view.hint >= 1 ? tones.memberPcs : [];
   const toneLabels = useMemo(() => {
@@ -511,8 +512,8 @@ export default function Drill() {
 
       {/* controls */}
       <div className="px-4 pb-4 flex items-center gap-2 text-sm">
-        <button className="btn btn-ghost" onClick={() => run?.hint()}>Hint {view.hint > 0 && <span className="text-accent">{view.hint}/3</span>}</button>
-        <button className="btn btn-ghost" onClick={() => t && playVoicing(t.voicing.notes)}>Play it</button>
+        {!hintsOff && <button className="btn btn-ghost" onClick={() => run?.hint()}>Hint {view.hint > 0 && <span className="text-accent">{view.hint}/3</span>}</button>}
+        {!hintsOff && <button className="btn btn-ghost" onClick={() => t && playVoicing(t.voicing.notes)}>Play it</button>}
         {(spec.pacing.mode === 'free' || (spec.pacing.advance ?? 'onTime') === 'onCorrect') && <button className="btn btn-ghost" onClick={() => run?.skip()} title="Move on even if it is marked wrong (→)">Skip</button>}
         {spec.pacing.mode === 'timed' && <button className="btn btn-ghost tabular-nums" onClick={() => setMetroOpen(true)}>Tempo {view.bpm}</button>}
         <span className="ml-auto text-xs text-ink-faint">{midi.inputMode === 'mic' ? 'microphone' : midi.connected ? midi.deviceName : 'computer keyboard'}{midi.sustain ? ' · pedal' : ''}</span>

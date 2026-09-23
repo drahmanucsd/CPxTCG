@@ -53,10 +53,11 @@ export default function Devices() {
           <select className="select" value={settings.displayStyle} onChange={(e) => settings.set({ displayStyle: e.target.value as 'realbook' | 'plain' })}><option value="realbook">Real Book (Δ − ø °)</option><option value="plain">Plain (maj7 m7 m7b5 dim7)</option></select>
         </label>
         <label className="flex items-center justify-between text-sm">Hints
-          <select className="select" value={settings.hintStyle} onChange={(e) => settings.set({ hintStyle: e.target.value as 'text' | 'keyboard' | 'both' })}>
+          <select className="select" value={settings.hintStyle} onChange={(e) => settings.set({ hintStyle: e.target.value as 'text' | 'keyboard' | 'both' | 'off' })}>
             <option value="both">On the keyboard and as text</option>
             <option value="keyboard">On the keyboard only</option>
             <option value="text">As text only</option>
+            <option value="off">Never show me the notes</option>
           </select>
         </label>
         <div className="text-xs text-ink-dim">Hint 1 outlines the chord tones on the keyboard with their degrees, hint 2 shows the actual voicing, hint 3 plays it.</div>
