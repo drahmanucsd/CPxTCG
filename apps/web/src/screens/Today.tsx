@@ -45,6 +45,7 @@ export default function Today() {
   const startTune = async () => {
     if (!dueSong) return;
     if (tuneStageId === 'listen') { nav(`/tunes/${encodeURIComponent(dueSong.id)}`); return; }
+    if (tuneStageId === 'melody') { nav(`/melody/${encodeURIComponent(dueSong.id)}`); return; }
     const spec = tuneDrillSpec(dueSong, {
       mode: 'changes', families: active.course.families, voiceLeading: 'off',
       band: { style: 'swing', bass: true, drums: true }, bpm: dueSong.tempo ?? 120,

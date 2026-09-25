@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { gradeMelody, parseAbc, quantise, toAbc, transposeMelody } from '../src/melody.js';
+import { alignMelody, gradeMelody, parseAbc, quantise, toAbc, transposeMelody } from '../src/melody.js';
 import { midiName } from '../src/pitch.js';
 
 const names = (src: string) => parseAbc(src).notes.map((n) => (n.midi === null ? 'z' : midiName(n.midi)));
@@ -68,5 +68,34 @@ describe('round trip', () => {
     const m = quantise([{ midi: 60, startBeat: 0.03, beats: 0.94 }, { midi: 64, startBeat: 1.06, beats: 0.48 }]);
     expect(m.notes.map((n) => n.start)).toEqual([0, 1]);
     expect(m.source).toBe('recorded');
+  });
+});
+
+describe('alignMelody', () => {
+  const head = parseAbc('M:4/4\nL:1/4\nK:C\nC D E F |').notes;
+
+  it('pairs each written note with the note that played it', () => {
+    const a = alignMelody(head, [60, 62, 64, 65]);
+    expect(a.pairs).toEqual([{ want: 0, got: 0 }, { want: 1, got: 1 }, { want: 2, got: 2 }, { want: 3, got: 3 }]);
+    expect(a.missed).toEqual([]);
+    expect(a.extra).toEqual([]);
+  });
+
+  it('a passing note between two written ones is extra, not a mismatch', () => {
+    const a = alignMelody(head, [60, 62, 63, 64, 65]);
+    expect(a.pairs.map((p) => p.got)).toEqual([0, 1, 3, 4]);
+    expect(a.extra).toEqual([2]);
+    expect(a.missed).toEqual([]);
+  });
+
+  it('reports which written note was dropped, by its index in the melody', () => {
+    const a = alignMelody(head, [60, 62, 65]);
+    expect(a.missed).toEqual([2]);
+    expect(a.pairs.map((p) => p.want)).toEqual([0, 1, 3]);
+  });
+
+  it('matches across octaves unless told not to', () => {
+    expect(alignMelody(head, [72, 74, 76, 77]).pairs).toHaveLength(4);
+    expect(alignMelody(head, [72, 74, 76, 77], { octaveSensitive: true }).pairs).toHaveLength(0);
   });
 });

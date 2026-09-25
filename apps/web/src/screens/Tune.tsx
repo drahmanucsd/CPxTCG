@@ -74,6 +74,8 @@ export default function Tune() {
       else setOptions(true);
       return;
     }
+    // the head is a line, not a set of chords: it gets timed, not graded (docs/13-melody-timing.md)
+    if (stageId === 'melody') { nav(`/melody/${encodeURIComponent(base.id)}`); return; }
     const mode: TunePracticeOptions['mode'] =
       stageId === 'map' ? 'quiz' : stageId === 'perform' && records.length ? 'record' : 'changes';
     const families =
@@ -142,6 +144,10 @@ export default function Tune() {
             <div className="text-lg mt-0.5">{stage.blurb}</div>
           </div>
           <div className="flex gap-2">
+            {/* the head against the click is worth reaching from any stage, not only stage 2 */}
+            {stageId !== 'melody' && (
+              <button className="btn btn-ghost" onClick={() => nav(`/melody/${encodeURIComponent(base.id)}`)}>Time the head</button>
+            )}
             {stageId !== 'listen' && <button className="btn btn-ghost" disabled={listening} onClick={() => void listen()}>{listening ? 'Playing…' : 'Hear it'}</button>}
             <button className="btn btn-primary" onClick={() => void go()}>{stage.action}</button>
           </div>

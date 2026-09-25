@@ -211,3 +211,48 @@ export function toAbc(m: Melody, opts: { title?: string; key?: string } = {}): s
   }
   return `${head}\n${out.join(' ')} |`;
 }
+
+/**
+ * Line up what was played against what is written, by pitch.
+ *
+ * The same longest-common-subsequence `gradeMelody` scores with, but backtracked so each matched
+ * written note knows which played note was it. That pairing is what lets timing be measured
+ * against the written rhythm instead of against the nearest click.
+ *
+ * Returns matched pairs in order plus the indices that went unmatched on each side.
+ */
+export function alignMelody(
+  expected: MelodyNote[],
+  played: number[],
+  opts: { octaveSensitive?: boolean } = {},
+): { pairs: Array<{ want: number; got: number }>; missed: number[]; extra: number[] } {
+  const norm = (n: number) => (opts.octaveSensitive ? n : (pc(n) as number));
+  const wantIdx = expected.map((n, i) => ({ i, v: n.midi })).filter((x) => x.v !== null) as Array<{ i: number; v: number }>;
+  const want = wantIdx.map((x) => norm(x.v));
+  const got = played.map(norm);
+
+  const dp: number[][] = Array.from({ length: want.length + 1 }, () => new Array<number>(got.length + 1).fill(0));
+  for (let i = 1; i <= want.length; i++) {
+    for (let j = 1; j <= got.length; j++) {
+      dp[i]![j] = want[i - 1] === got[j - 1] ? dp[i - 1]![j - 1]! + 1 : Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+    }
+  }
+  const pairs: Array<{ want: number; got: number }> = [];
+  const matchedWant = new Set<number>();
+  const matchedGot = new Set<number>();
+  let i = want.length, j = got.length;
+  while (i > 0 && j > 0) {
+    if (want[i - 1] === got[j - 1]) {
+      pairs.push({ want: wantIdx[i - 1]!.i, got: j - 1 });
+      matchedWant.add(i - 1); matchedGot.add(j - 1);
+      i--; j--;
+    } else if (dp[i - 1]![j]! >= dp[i]![j - 1]!) i--;
+    else j--;
+  }
+  pairs.reverse();
+  return {
+    pairs,
+    missed: wantIdx.filter((_, k) => !matchedWant.has(k)).map((x) => x.i),
+    extra: played.map((_, k) => k).filter((k) => !matchedGot.has(k)),
+  };
+}

@@ -1,7 +1,9 @@
 # 04 — Build plan
 
-> **Status (2026-09-20):** Phases 0–6 have a first implementation on this branch. Per phase: ✅ done as specified · ◐ partial · ☐ not started.
+> **Status (2026-09-25):** Phases 0–6 have a first implementation on this branch. Per phase: ✅ done as specified · ◐ partial · ☐ not started.
 > Phase 0 ✅ · Phase 1 ✅ · Phase 2 ✅ · Phase 3 ✅ (MusicXML import ☐, block-chord passing-dim rule ☐) · Phase 4 ◐ (curated-catalog + auto-sync infrastructure ✅, catalog contents ☐ — needs the key and a verification pass; live search ✅ needs the key; Records with stems from files ✅; MIDI replay ✅) · Phase 6b ☐ · Phase 5 ◐ (mic level 1 ✅, Basic Pitch ☐, speech ✅, ear modes ☐) · Phase 6 ◐ (local OCR via Tesseract ✅, bar-box editing ☐ — chart text is edited instead, melody OMR ☐) · Phase 7 ☐.
+>
+> Melody timing (`docs/13-melody-timing.md`) ✅ — analysis, the run, click placement, the screen and storage. The ABC pipeline still ships no melody content by design; heads come from the user's own take.
 > Decisions taken: name **Shed**, Vercel, **local OCR** (Tesseract in the browser, no key), YouTube search is the primary path (`api/yt-search.ts`, needs `YOUTUBE_API_KEY`; paste-URL fallback), chord display is a setting (Real Book default), **no cloud sync / accounts / spaced-repetition scheduler** — progress is local and simple.
 
 Ordered so every phase ends with something you'd actually practice with. Each phase lists the

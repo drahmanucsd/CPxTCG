@@ -29,6 +29,14 @@ export interface TransportOptions {
   countInBars?: number;
   /** clicks per beat (1 = quarter notes, 2 = 8ths, 3 = triplets) */
   subdivision?: number;
+  /**
+   * Which beats of the bar actually sound, 0-based. null = all of them.
+   *
+   * [1, 3] is the click on 2 and 4 that every jazz teacher asks for: the downbeat stops being
+   * given to you, so keeping the form becomes your job rather than the metronome's. The count-in
+   * always sounds every beat — otherwise there is no way to know where one is.
+   */
+  clickBeats?: number[] | null;
   /** seconds to schedule ahead of the clock */
   lookAhead?: number;
   /** ms between scheduler ticks */
@@ -44,6 +52,7 @@ export class Transport extends Emitter<TransportEvents> {
   timeSig: TimeSignature;
   countInBars: number;
   subdivision: number;
+  clickBeats: number[] | null;
   muted: boolean;
   private lookAhead: number;
   private tickMs: number;
@@ -62,6 +71,7 @@ export class Transport extends Emitter<TransportEvents> {
     this.timeSig = opts.timeSig ?? { beats: 4, unit: 4 };
     this.countInBars = opts.countInBars ?? 1;
     this.subdivision = opts.subdivision ?? 1;
+    this.clickBeats = opts.clickBeats ?? null;
     this.muted = opts.muted ?? false;
     this.lookAhead = opts.lookAhead ?? 0.1;
     this.tickMs = opts.tickMs ?? 25;
@@ -129,7 +139,7 @@ export class Transport extends Emitter<TransportEvents> {
       const beatsPerBar = this.timeSig.beats;
       const beatInBar = ((idx % beatsPerBar) + beatsPerBar) % beatsPerBar;
       const bar = Math.floor(idx / beatsPerBar);
-      if (!this.muted) {
+      if (!this.muted && (countIn || this.clickBeats === null || this.clickBeats.includes(beatInBar))) {
         this.sink.click(t, countIn ? 'countIn' : beatInBar === 0 ? 'bar' : 'beat');
         for (let s = 1; s < this.subdivision; s++) this.sink.click(t + (s * this.beatDuration) / this.subdivision, 'sub');
       }

@@ -292,6 +292,7 @@ export default function Drill() {
     timeSig: spec?.pacing.timeSig ?? { beats: 4, unit: 4 },
     subdivision: spec?.pacing.subdivision ?? 1,
     countInBars: spec?.pacing.countInBars ?? 1,
+    clickBeats: spec?.pacing.clickBeats ?? null,
   };
   const setMetro = (patch: Partial<MetronomeConfig>) => {
     setSpec((prev) => (prev ? { ...prev, pacing: { ...prev.pacing, ...patch } } : prev));
@@ -300,6 +301,7 @@ export default function Drill() {
       else setView((v) => ({ ...v, bpm: patch.bpm! }));
     }
     if (patch.subdivision !== undefined) getAudio().transport.subdivision = patch.subdivision;
+    if (patch.clickBeats !== undefined) getAudio().transport.clickBeats = patch.clickBeats;
     if (patch.timeSig !== undefined && !runnerRef.current) getAudio().transport.timeSig = patch.timeSig;
     if (patch.countInBars !== undefined && !runnerRef.current) getAudio().transport.countInBars = patch.countInBars;
   };

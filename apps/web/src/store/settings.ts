@@ -28,6 +28,18 @@ export interface Settings {
    * synced and never searched for. The app does not choose your recording.
    */
   reference: Record<string, { url: string; label?: string }>;
+  /** how the melody-timing screen is set up; remembered because you change it once and then work */
+  melodyRun: {
+    swing: boolean;
+    subdivision: import('@shed/theory').Subdivision;
+    clickBeats: number[] | null;
+    /** audible click subdivision: 1 = quarters, 2 = eighths */
+    clickSubdivision: number;
+    countInBars: number;
+    choruses: number;
+    /** grade against the head you recorded, when there is one */
+    useWritten: boolean;
+  };
   set: (patch: Partial<Settings>) => void;
 }
 
@@ -36,6 +48,7 @@ export const useSettings = create<Settings>()(
     (set) => ({
       displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, calibratedAt: null, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
       visualPulse: true, speakPrompts: false, hintStyle: 'both', level: 'fluency', onboarded: false, courseStage: {}, tuneStage: {}, tuneMemory: {}, reference: {},
+      melodyRun: { swing: true, subdivision: 'eighth', clickBeats: [1, 3], clickSubdivision: 1, countInBars: 1, choruses: 1, useWritten: true },
       set: (patch) => set(patch),
     }),
     { name: 'shed.settings', partialize: (s) => Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v !== 'function')) as Partial<Settings> },

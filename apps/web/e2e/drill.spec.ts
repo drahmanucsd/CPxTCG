@@ -139,3 +139,61 @@ test('scan page renders and accepts chart text without OCR', async ({ page }) =>
   await page.goto('/scan');
   await expect(page.getByRole('heading', { name: 'Scan a chart' })).toBeVisible();
 });
+
+test('the new tunes are in the library as changes', async ({ page }) => {
+  await page.goto('/tunes');
+  for (const t of ['Tune Up', 'Misty', 'Autumn Leaves']) await expect(page.getByText(t, { exact: true })).toBeVisible();
+  await page.goto('/tunes/builtin-autumn-leaves');
+  await expect(page.getByRole('heading', { name: 'Autumn Leaves' })).toBeVisible();
+  await page.getByRole('button', { name: '4. The map' }).click();
+  await expect(page.getByText(/^32 bars/)).toBeVisible();
+});
+
+test('timing a head: the click runs, the take is analysed, nothing is failed', async ({ page }) => {
+  await page.goto('/melody/builtin-autumn-leaves');
+  await expect(page.getByRole('heading', { name: 'Play the head in time' })).toBeVisible();
+  // no melody ships, so the default is timing against the click
+  await expect(page.getByText(/timed against the click/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Start' }).click();
+  // wait for the count-in to arrive before waiting for it to go: unlocking audio is async, so
+  // "not visible yet" and "finished" look identical if you only check for absence
+  await expect(page.getByText('Counting in…')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 8000 });
+
+  // eight notes, roughly a beat apart at 120 — deliberately sloppy, since the point is that it
+  // measures rather than judges
+  await page.evaluate(async () => {
+    const line = [71, 72, 74, 79, 77, 76, 74, 71];
+    for (const n of line) {
+      window.__shed!.noteOn(n);
+      await new Promise((r) => setTimeout(r, 120));
+      window.__shed!.noteOff(n);
+      await new Promise((r) => setTimeout(r, 380));
+    }
+  });
+  await page.getByRole('button', { name: 'Stop' }).click();
+
+  await expect(page.getByText('How your time was')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Spread', { exact: true })).toBeVisible();
+  await expect(page.getByText('Every note against the beat')).toBeVisible();
+  // the four facts, none of which a metronome gives you
+  await expect(page.getByText('Sits', { exact: true })).toBeVisible();
+  await expect(page.getByText('Your tempo', { exact: true })).toBeVisible();
+  await expect(page.getByText('Your eighths', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Where in the bar/)).toBeVisible();
+  // a take you can keep as the reference head for the tune
+  await expect(page.getByRole('button', { name: /Save the head|Replace/ })).toBeVisible();
+  // and it is remembered
+  await expect(page.getByText('Earlier takes')).toBeVisible();
+  await page.screenshot({ path: 'test-results/melody-report.png', fullPage: true });
+});
+
+test('the click can be moved off the downbeat', async ({ page }) => {
+  await page.goto('/melody');
+  await page.getByText('Setup', { exact: true }).click();
+  await expect(page.getByRole('button', { name: '2 and 4', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'beat 2 only', exact: true }).click();
+  await expect(page.getByText(/click on 2 ·/)).toBeVisible();
+  await expect(page.getByText(/not on the downbeat/)).toBeVisible();
+});

@@ -39,6 +39,8 @@ export interface Pacing {
   countInBars: number;
   timeSig: { beats: number; unit: number };
   subdivision?: number;
+  /** beats of the bar the click sounds on, 0-based; null/undefined = all. [1, 3] is 2 and 4. */
+  clickBeats?: number[] | null;
   /** free mode: ms to hold the green before advancing */
   holdMs?: number;
 }
@@ -388,6 +390,7 @@ export class DrillRunner extends Emitter<DrillEvents> {
       t.timeSig = this.spec.pacing.timeSig;
       t.countInBars = this.spec.pacing.countInBars;
       if (this.spec.pacing.subdivision) t.subdivision = this.spec.pacing.subdivision;
+      t.clickBeats = this.spec.pacing.clickBeats ?? null;
       this.unsubs.push(t.on('beat', (b) => this.onBeat(b.index, b.time)));
       this.setState(this.spec.pacing.countInBars > 0 ? 'countIn' : 'running');
       t.start(opts.at);
