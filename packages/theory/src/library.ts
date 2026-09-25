@@ -1,7 +1,13 @@
 /**
- * Built-in library: standards whose compositions are in the US public domain (published ≤ 1930).
- * These are the common jam-session changes, not transcriptions of any particular edition — edit to taste,
- * or import your own iReal charts.
+ * Built-in library: the common jam-session changes for standards, not transcriptions of any
+ * particular edition — edit to taste, or import your own iReal charts.
+ *
+ * What is and is not in here, deliberately:
+ *   - Chord symbols only. A chord progression is a functional skeleton that every fake book,
+ *     teacher and player writes out differently; the melody is the part that is actually the
+ *     composition, and no melody ships with this app. See docs/13-melody-timing.md.
+ *   - Most of these compositions are in the US public domain (published ≤ 1930). Tune Up, Misty
+ *     and Autumn Leaves are not, and are here as changes alone for that reason.
  */
 import { parseChartText } from './chartText.js';
 import type { Song } from './song.js';
@@ -152,6 +158,26 @@ composer: Philip Braham
 key: Ab | style: swing | tempo: 220
 [A] Db7 | Db7 | Ab6 | Ab6 | Db7 | Db7 | Ab6 | Ab6 | Db7 | Db7 | Ab6 | Ab6 | Bbm7 | Eb7 | Ab6 | Eb7 |
 [B] Db7 | Db7 | Ab6 | Ab6 | Db7 | Db7 | Ab6 | Ab6 | F7 | F7 | Bb7 | Bb7 | Eb7 | Eb7 | Ab6 | Eb7 |`,
+`title: Tune Up
+composer: Miles Davis
+key: D | style: swing | tempo: 200
+[A] { Em7 | A7 | Dmaj7 | Dmaj7 | Dm7 | G7 | Cmaj7 | Cmaj7 | Cm7 | F7 | Bbmaj7 | Bbmaj7 | Ebmaj7 | Ebmaj7 | 1) Em7 | A7 }
+2) Dmaj7 | Dmaj7 |`,
+
+`title: Misty
+composer: Erroll Garner
+key: Eb | style: ballad | tempo: 68
+[A] { Ebmaj7 | Bbm7 Eb7 | Abmaj7 | Abm7 Db7 | Ebmaj7 Cm7 | Fm7 Bb7 | 1) Gm7 C7b9 | Fm7 Bb7 }
+2) Eb6 | Eb6 |
+[B] Bbm7 | Eb7 | Abmaj7 | Abmaj7 | Am7 | D7 F7 | Gm7b5 C7b9 | Fm7 Bb7 |
+[A] Ebmaj7 | Bbm7 Eb7 | Abmaj7 | Abm7 Db7 | Ebmaj7 Cm7 | Fm7 Bb7 | Eb6 Cm7 | Fm7 Bb7 |`,
+
+`title: Autumn Leaves
+composer: Joseph Kosma
+key: G- | style: swing | tempo: 120
+[A] { Cm7 | F7 | Bbmaj7 | Ebmaj7 | Am7b5 | D7b9 | Gm6 | Gm6 }
+[B] Am7b5 | D7b9 | Gm6 | Gm6 | Cm7 | F7 | Bbmaj7 | Bbmaj7 |
+[C] Am7b5 | D7b9 | Gm7 | Gb7 | Fm7 | E7 | Am7b5 D7b9 | Gm6 |`,
 ];
 
 let cache: Song[] | null = null;

@@ -8,4 +8,4 @@
 - Song analysis (`packages/theory/src/analysis.ts`) reads the chord stream, not one chord per bar; most ii-Vs are two chords inside one bar.
 - Grading semantics live in `packages/theory/src/matcher.ts` (strictness ladder) and `packages/engine/src/drill.ts` (windows, lateness). Change them there, not in the UI.
 - Docs in `docs/` are the plan of record; keep `04-build-plan.md` status current when a phase lands.
-- Never bundle copyrighted lead sheets. Built-in tunes must be public domain (published ≤ 1930 as of 2026).
+- Never bundle a copyrighted melody. Built-in tunes ship as chord changes only; a melody is the composition, a chord chart is a functional skeleton every fake book writes differently. Compositions published ≤ 1930 are public domain and may carry a melody too — nothing else may. Melodies for in-copyright tunes get recorded or typed in by the user (see docs/13-melody-timing.md).
