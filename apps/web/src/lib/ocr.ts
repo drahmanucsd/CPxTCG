@@ -6,29 +6,46 @@ import type { OcrWord } from '@shed/theory';
 
 export interface Page { canvas: HTMLCanvasElement; width: number; height: number }
 
-export async function fileToPages(file: File, maxPages = 4): Promise<Page[]> {
+/**
+ * A PDF opened but not yet rendered.
+ *
+ * A fake book is four hundred pages and fifty megabytes; rendering it up front is not an option,
+ * and rendering only the first few makes it useless. Pages come out one at a time, on demand.
+ */
+export interface PageSource {
+  numPages: number;
+  /** 1-based */
+  render(index: number): Promise<Page>;
+  destroy(): void;
+}
+
+export async function openPages(file: File): Promise<PageSource> {
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
     const pdfjs = await import('pdfjs-dist');
     const worker = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
     pdfjs.GlobalWorkerOptions.workerSrc = worker;
-    const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-    const pages: Page[] = [];
-    for (let i = 1; i <= Math.min(doc.numPages, maxPages); i++) {
-      const page = await doc.getPage(i);
-      const viewport = page.getViewport({ scale: 2 });
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width; canvas.height = viewport.height;
-      await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise;
-      pages.push({ canvas, width: canvas.width, height: canvas.height });
-    }
-    return pages;
+    const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+    const doc = await task.promise;
+    return {
+      numPages: doc.numPages,
+      async render(index: number): Promise<Page> {
+        const page = await doc.getPage(Math.min(doc.numPages, Math.max(1, index)));
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvas, canvasContext: canvas.getContext('2d')!, viewport }).promise;
+        return { canvas, width: canvas.width, height: canvas.height };
+      },
+      destroy() { void task.destroy(); },
+    };
   }
   const bmp = await createImageBitmap(file);
   const scale = Math.min(1, 2200 / Math.max(bmp.width, bmp.height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
   canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-  return [{ canvas, width: canvas.width, height: canvas.height }];
+  const page: Page = { canvas, width: canvas.width, height: canvas.height };
+  return { numPages: 1, render: async () => page, destroy() { /* nothing to free */ } };
 }
 
 /** Light pre-processing helps Tesseract on phone photos: grayscale + contrast stretch. */

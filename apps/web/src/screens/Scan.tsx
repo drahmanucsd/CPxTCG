@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { BackLink } from '../components/BackLink';
 import { useNavigate } from 'react-router';
 import { layoutChart, layoutToChartText, parseChartText, slug, type OcrWord, type ScanLayout } from '@shed/theory';
-import { canvasToBlob, fileToPages, ocrPage, type Page } from '../lib/ocr';
+import { canvasToBlob, ocrPage, openPages, type Page, type PageSource } from '../lib/ocr';
 import { db } from '../db';
 import { saveSong } from '../lib/songs';
 
 export default function Scan() {
   const nav = useNavigate();
-  const [pages, setPages] = useState<Page[]>([]);
-  const [pageIdx, setPageIdx] = useState(0);
+  const [src, setSrc] = useState<PageSource | null>(null);
+  const [page, setPage] = useState<Page | null>(null);
+  const [pageNo, setPageNo] = useState(1);
+  const [rendering, setRendering] = useState(false);
   const [words, setWords] = useState<OcrWord[] | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +21,6 @@ export default function Scan() {
   const [text, setText] = useState('');
   const [edited, setEdited] = useState(false);
   const imgRef = useRef<HTMLDivElement>(null);
-  const page = pages[pageIdx];
 
   const layout: ScanLayout | null = useMemo(() => (page && words ? layoutChart(words, { barsPerSystem, pageWidth: page.width, pageHeight: page.height }) : null), [page, words, barsPerSystem]);
   useEffect(() => { if (layout && !edited) setText(layoutToChartText(layout, { title: title || 'Scanned tune', key })); }, [layout, title, key, edited]);
@@ -27,11 +28,24 @@ export default function Scan() {
   const onFile = async (f: File) => {
     setError(null); setWords(null); setEdited(false);
     try {
-      const p = await fileToPages(f);
-      setPages(p); setPageIdx(0);
+      src?.destroy();
+      const s = await openPages(f);
+      setSrc(s);
+      await show(s, 1);
       if (!title) setTitle(f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' '));
     } catch (e) { setError((e as Error).message); }
   };
+
+  /** Render one page on demand: a fake book is hundreds of pages and cannot be rendered up front. */
+  const show = async (s: PageSource, n: number) => {
+    const clamped = Math.min(s.numPages, Math.max(1, n));
+    setRendering(true); setWords(null); setEdited(false);
+    try { setPage(await s.render(clamped)); setPageNo(clamped); }
+    catch (e) { setError((e as Error).message); }
+    finally { setRendering(false); }
+  };
+  const go = (n: number) => { if (src) void show(src, n); };
+  useEffect(() => () => src?.destroy(), [src]);
   const run = async () => {
     if (!page) return;
     setProgress(0); setError(null);
@@ -40,7 +54,7 @@ export default function Scan() {
     finally { setProgress(null); }
   };
   const save = async () => {
-    if (!page || !layout) return;
+    if (!page) return;
     try {
       const song = parseChartText(text, `scan-${slug(title || 'scanned')}-${Date.now().toString(36)}`);
       song.source = 'scan';
@@ -48,7 +62,10 @@ export default function Scan() {
       const blob = await canvasToBlob(page.canvas);
       await db.images.put({ id: imageId, blob, width: page.width, height: page.height, createdAt: Date.now() });
       // boxes per written bar: the layout's bars line up with the chart text bars when the user hasn't restructured it
-      const boxes = song.bars.map((_, i) => { const b = layout.bars[i]; return b ? { x: b.box.x / page.width, y: b.box.y / page.height, w: b.box.w / page.width, h: b.box.h / page.height } : null; });
+      const boxes = song.bars.map((_, i) => {
+        const b = layout?.bars[i];
+        return b ? { x: b.box.x / page.width, y: b.box.y / page.height, w: b.box.w / page.width, h: b.box.h / page.height } : null;
+      });
       song.scan = { imageId, boxes };
       await saveSong(song);
       nav(`/tunes/${encodeURIComponent(song.id)}`);
@@ -60,11 +77,25 @@ export default function Scan() {
       <div>
         <BackLink to="/tunes" label="Tunes" />
         <h1 className="text-2xl font-semibold tracking-tight mt-1">Scan a chart</h1>
-        <p className="text-ink-dim text-sm mt-1">Photograph or upload a lead-sheet page (image or PDF). The chord symbols are read on this device, laid into bars, and you fix anything it got wrong before saving. The page image stays local and becomes your practice view.</p>
+        <p className="text-ink-dim text-sm mt-1">Photograph or upload a lead-sheet page, or open a whole fake book PDF and page to the tune you want. Everything happens on this device and the page image stays local.</p>
+        <p className="text-ink-faint text-xs mt-1">
+          The reader handles printed and typeset charts. It cannot read hand-lettered ones — the Real Book included — so for those, skip the read, type the changes, and keep the page: the notation itself becomes your practice view, with the bar cursor running over it.
+        </p>
       </div>
       <div className="card flex flex-wrap items-center gap-3">
         <label className="btn btn-primary cursor-pointer">Choose image / PDF<input type="file" accept="image/*,.pdf" capture="environment" className="hidden" onChange={(e) => e.target.files?.[0] && void onFile(e.target.files[0])} /></label>
-        {pages.length > 1 && <select className="select" value={pageIdx} onChange={(e) => { setPageIdx(+e.target.value); setWords(null); }}>{pages.map((_, i) => <option key={i} value={i}>Page {i + 1}</option>)}</select>}
+        {src && src.numPages > 1 && (
+          <div className="flex items-center gap-1 text-sm">
+            <button className="btn btn-ghost !px-2 !py-1" onClick={() => go(pageNo - 1)} disabled={pageNo <= 1 || rendering}>‹</button>
+            <input
+              className="input w-20 text-center tabular-nums" type="number" min={1} max={src.numPages} value={pageNo}
+              onChange={(e) => go(+e.target.value)} aria-label="Page"
+            />
+            <span className="text-ink-faint">/ {src.numPages}</span>
+            <button className="btn btn-ghost !px-2 !py-1" onClick={() => go(pageNo + 1)} disabled={pageNo >= src.numPages || rendering}>›</button>
+            {rendering && <span className="text-ink-faint ml-1">rendering…</span>}
+          </div>
+        )}
         {page && <button className="btn btn-ghost" onClick={() => void run()} disabled={progress !== null}>{progress === null ? (words ? 'Read again' : 'Read the chords') : `Reading… ${Math.round(progress * 100)}%`}</button>}
         {layout && <label className="text-sm flex items-center gap-2">Bars per line <input type="number" className="input w-16" min={1} max={8} value={barsPerSystem} onChange={(e) => { setBarsPerSystem(+e.target.value); setEdited(false); }} /></label>}
         {error && <span className="text-bad text-sm">{error}</span>}
@@ -79,7 +110,7 @@ export default function Scan() {
               <label className="text-sm">Title<input className="input w-full" value={title} onChange={(e) => { setTitle(e.target.value); }} /></label>
               <label className="text-sm">Key<input className="input w-full" value={key} onChange={(e) => setKey(e.target.value)} placeholder="Eb, F, Bb-" /></label>
             </div>
-            <div className="text-xs text-ink-dim">{layout ? `${layout.bars.length} bars in ${layout.systems.length} lines · ${layout.ignored.length} words ignored` : 'Read the chords to fill this in, or type the chart yourself.'}</div>
+            <div className="text-xs text-ink-dim">{layout ? `${layout.bars.length} bars in ${layout.systems.length} lines · ${layout.ignored.length} words ignored` : 'Read the chords to fill this in, or type the chart yourself. Either way the page is kept.'}</div>
             <textarea className="input w-full font-mono text-xs" rows={14} value={text} onChange={(e) => { setText(e.target.value); setEdited(true); }} placeholder={'title: …\nkey: F | time: 4/4\n[A] Gm7 C7 | F6 | …'} />
             <div className="flex gap-2">
               <button className="btn btn-primary" onClick={() => void save()} disabled={!text.trim()}>Save to my tunes</button>
