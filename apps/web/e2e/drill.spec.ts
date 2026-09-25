@@ -197,3 +197,38 @@ test('the click can be moved off the downbeat', async ({ page }) => {
   await expect(page.getByText(/click on 2 ·/)).toBeVisible();
   await expect(page.getByText(/not on the downbeat/)).toBeVisible();
 });
+
+test('call and response: hear a figure, answer it, be told where you put it', async ({ page }) => {
+  await page.goto('/rhythm');
+  await expect(page.getByRole('heading', { name: 'Hear it, play it back' })).toBeVisible();
+  // the push is the default, because it is the placement that makes a head sound stiff
+  await expect(page.getByText('The push', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('1 push across the bar line')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByText('Counting in…')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Listen')).toBeVisible({ timeout: 8000 });
+  // the call is two bars at 120, then the response window opens
+  await expect(page.getByText('Your turn')).toBeVisible({ timeout: 12000 });
+
+  // answer it flat: the push played on the downbeat instead of the "and" of 4
+  await page.evaluate(async () => {
+    const gaps = [0, 500, 500, 1000];   // 1, 2, 3, then the 1 of the next bar
+    for (const g of gaps) {
+      await new Promise((r) => setTimeout(r, g));
+      window.__shed!.noteOn(72);
+      window.__shed!.noteOff(72);
+    }
+  });
+  await expect(page.getByText(/flattened the push/)).toBeVisible({ timeout: 12000 });
+  await expect(page.getByText(/an eighth earlier/)).toBeVisible();
+  await page.screenshot({ path: 'test-results/rhythm-flattened.png', fullPage: true });
+  await page.getByRole('button', { name: 'Stop' }).click();
+});
+
+test('April in Paris is in the library alongside Autumn Leaves', async ({ page }) => {
+  await page.goto('/tunes/builtin-april-in-paris');
+  await expect(page.getByRole('heading', { name: 'April in Paris' })).toBeVisible();
+  await page.getByRole('button', { name: '4. The map' }).click();
+  await expect(page.getByText(/^32 bars/)).toBeVisible();
+});

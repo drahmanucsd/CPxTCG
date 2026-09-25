@@ -145,6 +145,7 @@ export default function Tune() {
           </div>
           <div className="flex gap-2">
             {/* the head against the click is worth reaching from any stage, not only stage 2 */}
+            <button className="btn btn-ghost" onClick={() => nav(`/rhythm/${encodeURIComponent(base.id)}`)}>Drill a rhythm</button>
             {stageId !== 'melody' && (
               <button className="btn btn-ghost" onClick={() => nav(`/melody/${encodeURIComponent(base.id)}`)}>Time the head</button>
             )}

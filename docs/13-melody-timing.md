@@ -86,12 +86,56 @@ Reached from tune stage 2 (*Melody*), from **Time the head** on any tune at any 
 `/melody` with no tune at all — a bare click with analysis, which is all you need if the book is
 already on the stand.
 
+## Call and response: drilling the push
+
+Measuring a take tells you what happened. It does not teach a placement, and the placement that
+needs teaching is **the push**: the note that belongs to the next bar, played an eighth early on
+the "and of 4". Playing it on the downbeat instead is what makes a head sound stiff, and it is
+invisible to everything else in this app — it is not a wrong note, and calling it "+180 ms late"
+would send you off to practise the wrong thing. It is a *different rhythm*.
+
+So `/rhythm/:songId?` does what a teacher does. The app plays one or two bars, you play them
+back, and it names what you did. You are finished when you get it right N times in a row, because
+once is luck.
+
+- **`packages/theory/src/figures.ts`** — the vocabulary, as data. Hits are `{ beat, slot }`, not
+  beat fractions: slot 1 means "the off-beat eighth", which sits at the swing ratio for the
+  tempo. Storing `3.5` would silently mean *straight* and would be wrong at every tempo a jazz
+  drill runs at. A nine-rung ladder ships, from four quarter notes to a mixed two-bar phrase.
+- **`pushIndices()`** — an off-beat on the last beat of a bar *with the following downbeat
+  silent*. That last condition is what makes it an anticipation rather than an ordinary off-beat.
+- **`gradeFigure()`** — matches twice. The first pass estimates the constant offset; the second
+  matches with it removed. Then *placement* (did you flatten it?) is judged on the corrected
+  positions and *accuracy* (were you on it?) on the raw ones. Without that split, a player 180 ms
+  behind on everything gets told they flattened a push they played correctly — or, worse, the
+  note drifts far enough that it is not matched at all and reads as "missed".
+- **`figuresFromMelody()`** — cuts a head you recorded into two-bar phrases and marks the ones
+  containing a push, so "drill the bars of this tune that I keep flattening" is one click from
+  having played the head once.
+
+The feedback is a picture, not a number: rings where the figure goes, dots where you put them.
+A flattened push is then unmistakable — the ring is on the "and" of 4 and the dot is over the bar
+line.
+
+## Fake books
+
+`Scan` opens a whole PDF and renders pages on demand, so a four-hundred-page book is usable
+rather than just its first four pages.
+
+The chord reader handles printed and typeset charts. It **cannot** read hand-lettered ones — the
+Real Book included; Tesseract returns noise on that calligraphy, which was measured rather than
+assumed. For those, skip the read, type the changes, and save: the page image is kept either way
+and becomes the practice view with the bar cursor running over it.
+
+Nothing imported this way is ever committed. It lives in the browser's IndexedDB on the device
+that imported it.
+
 ## Open
 
-- **Anticipations.** A jazz head that pushes the downbeat onto the "and of 4" is written that way
-  and played that way; against a bare grid it currently reads as a note on the "4&", which is
-  correct, but against a *written* head that lacks the push it reads as early. Only fixable with
-  better melody data.
+- **Anticipations against a written head.** A head that pushes the downbeat is written that way
+  and played that way; against a bare grid it reads correctly as a note on the "4&", but against
+  a *written* head that lacks the push it reads as early. `gradeFigure` handles this properly for
+  short phrases; `analyzeMelodyTiming` does not yet.
 - **Per-phrase rather than per-bar.** Rushing usually starts at a phrase end, not a bar line.
   `worstBars` is a blunt version of the right idea.
 - **Audio input.** Everything here is MIDI onsets. Onset detection from a microphone is a

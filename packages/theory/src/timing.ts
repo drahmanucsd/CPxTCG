@@ -469,3 +469,147 @@ export function analyzeMelodyTiming(
   const timing = notes.length >= 3 ? summarise(notes, grid, sub, windowMs) : EMPTY(windowMs);
   return { timing, pitch, perNote, missed: missed.length, extra: extra.length, displaced };
 }
+
+// ---------------------------------------------------------------------------
+// Against a rhythm figure
+// ---------------------------------------------------------------------------
+
+export interface FigureHitResult {
+  /** where the hit belongs, in beats from the start of the phrase */
+  beat: number;
+  /** where you actually put it */
+  playedBeat: number | null;
+  offsetMs: number | null;
+  /**
+   * 'flattened' is the one that matters: the hit is an anticipation and you played it on the
+   * downbeat that follows. That is not lateness — it is a different rhythm, and calling it
+   * "+180 ms late" would teach the wrong lesson.
+   */
+  verdict: 'clean' | 'early' | 'late' | 'flattened' | 'missed';
+  push: boolean;
+}
+
+export interface FigureVerdict {
+  ok: boolean;
+  hits: FigureHitResult[];
+  /** notes played that no hit wanted */
+  extra: number;
+  clean: number;
+  flattened: number;
+  missed: number;
+  medianMs: number;
+  headline: string;
+  advice: string | null;
+}
+
+export interface FigureGradeOptions {
+  /** ± ms that counts as hitting it. Default 80 — a figure drill is about placement, not polish. */
+  windowMs?: number;
+  /** how far away a played note may be and still be counted as this hit, in beats */
+  searchBeats?: number;
+  latencyMs?: number;
+  /** indices into `expected` that are anticipations */
+  pushes?: number[];
+}
+
+/**
+ * Grade one response in a call-and-response drill.
+ *
+ * Both sides are in beats from the start of the phrase, so swing has already been resolved by
+ * whoever built the figure — see `hitBeat` in figures.ts.
+ */
+export function gradeFigure(
+  expected: number[],
+  played: number[],
+  beatDuration: number,
+  opts: FigureGradeOptions = {},
+): FigureVerdict {
+  const windowMs = opts.windowMs ?? 80;
+  const search = opts.searchBeats ?? 0.75;
+  const lat = (opts.latencyMs ?? 0) / 1000 / beatDuration;
+  const pushes = new Set(opts.pushes ?? []);
+  const free = played.map((b) => b - lat);
+  const used = new Set<number>();
+
+  /*
+   * Matching, then classification, and both need care.
+   *
+   * Which rhythm you played and how accurately you played it are different questions with
+   * different references. A player 180 ms behind on everything has played the figure correctly
+   * and late; judged on raw positions their push lands inside the next downbeat's window and
+   * they would be told to fix a mistake they did not make. Worse, the note can drift far enough
+   * from where it belongs that it is not matched at all and reads as "missed".
+   *
+   * So: match once to estimate the constant offset, match again with it removed, then classify
+   * *placement* on the corrected positions and *accuracy* on the raw ones.
+   */
+  interface Raw { want: number; got: number | null; offsetMs: number | null; shifted: number | null }
+  const match = (shift: number): Raw[] => {
+    const used = new Set<number>();
+    return expected.map((want) => {
+      let best = -1, bestD = Infinity;
+      for (let j = 0; j < free.length; j++) {
+        if (used.has(j)) continue;
+        const d = Math.abs(free[j]! - shift - want);
+        if (d < bestD) { bestD = d; best = j; }
+      }
+      if (best < 0 || bestD > search) return { want, got: null, offsetMs: null, shifted: null };
+      used.add(best);
+      const got = free[best]!;
+      return { want, got, offsetMs: (got - want) * beatDuration * 1000, shifted: got - shift };
+    });
+  };
+
+  const first = match(0);
+  const bias = median(first.map((r) => r.offsetMs).filter((x): x is number => x !== null)) / 1000 / beatDuration;
+  const raw = match(bias);
+  for (const r of raw) if (r.got !== null) used.add(free.indexOf(r.got));
+
+  const hits: FigureHitResult[] = raw.map((r, i) => {
+    const push = pushes.has(i);
+    if (r.got === null) return { beat: r.want, playedBeat: null, offsetMs: null, verdict: 'missed', push };
+    const downbeat = Math.ceil(r.want + 1e-9);
+    const onDownbeat = push && Math.abs((r.shifted! - downbeat) * beatDuration * 1000) <= windowMs;
+    const verdict: FigureHitResult['verdict'] =
+      onDownbeat ? 'flattened'
+      : Math.abs(r.offsetMs!) <= windowMs ? 'clean'
+      : r.offsetMs! < 0 ? 'early' : 'late';
+    return { beat: r.want, playedBeat: r.got, offsetMs: r.offsetMs, verdict, push };
+  });
+
+  const clean = hits.filter((h) => h.verdict === 'clean').length;
+  const flattened = hits.filter((h) => h.verdict === 'flattened').length;
+  const missed = hits.filter((h) => h.verdict === 'missed').length;
+  const offs = hits.map((h) => h.offsetMs).filter((x): x is number => x !== null);
+  const ok = clean === hits.length && free.length - used.size === 0;
+
+  return {
+    ok, hits, clean, flattened, missed,
+    extra: free.length - used.size,
+    medianMs: Math.round(median(offs)),
+    ...describeFigure({ ok, clean, flattened, missed, hits, extra: free.length - used.size, offs }),
+  };
+}
+
+function describeFigure(r: {
+  ok: boolean; clean: number; flattened: number; missed: number;
+  hits: FigureHitResult[]; extra: number; offs: number[];
+}): { headline: string; advice: string | null } {
+  const n = r.hits.length;
+  if (r.ok) return { headline: 'That is the figure', advice: null };
+  if (r.flattened) {
+    return {
+      headline: r.flattened === 1 ? 'You flattened the push' : `You flattened ${r.flattened} of the pushes`,
+      advice: 'The note belongs an eighth earlier — it is the last thing in the bar before, not the first thing in the bar after. Count "…3, 4 and" and put it on the "and".',
+    };
+  }
+  if (r.missed === n) return { headline: 'Nothing landed', advice: 'Listen to the call again before answering.' };
+  if (r.missed) return { headline: `${n - r.missed} of ${n}`, advice: 'Some hits never arrived. Play fewer notes but put them in the right places.' };
+  if (r.extra) return { headline: 'Right places, extra notes', advice: 'The figure is exactly these hits — anything else muddies it.' };
+  const med = median(r.offs);
+  const dir = med > 0 ? 'late' : 'early';
+  return {
+    headline: `Right places, ${Math.abs(Math.round(med))} ms ${dir}`,
+    advice: Math.abs(med) > 140 ? `Consistently ${dir} by that much usually means you are hearing the subdivision wrong, not reacting slowly.` : null,
+  };
+}

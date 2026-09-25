@@ -158,9 +158,12 @@ export default function Melody() {
           </div>
         </div>
         {!running && (
-          <button className="btn btn-primary text-base px-6 py-3 ml-auto" onClick={() => void start()}>
-            {report ? 'Run it again' : 'Start'}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <button className="btn btn-ghost" onClick={() => nav(id ? `/rhythm/${encodeURIComponent(id)}` : '/rhythm')}>Drill a rhythm</button>
+            <button className="btn btn-primary text-base px-6 py-3" onClick={() => void start()}>
+              {report ? 'Run it again' : 'Start'}
+            </button>
+          </div>
         )}
         {running && <button className="btn btn-ghost ml-auto" onClick={stop}>Stop</button>}
       </div>

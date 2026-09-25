@@ -10,6 +10,7 @@ import Course from './screens/Course';
 import Tunes from './screens/Tunes';
 import Tune from './screens/Tune';
 import Melody from './screens/Melody';
+import Rhythm from './screens/Rhythm';
 import Scan from './screens/Scan';
 import { useMidiStatus } from './midi/midiService';
 
@@ -53,6 +54,8 @@ export default function App() {
           <Route path="/tunes/:id" element={<Tune />} />
           <Route path="/melody" element={<Melody />} />
           <Route path="/melody/:songId" element={<Melody />} />
+          <Route path="/rhythm" element={<Rhythm />} />
+          <Route path="/rhythm/:songId" element={<Rhythm />} />
           <Route path="/scan" element={<Scan />} />
         </Routes>
       </main>

@@ -40,6 +40,16 @@ export interface Settings {
     /** grade against the head you recorded, when there is one */
     useWritten: boolean;
   };
+  /** the call-and-response rhythm drill */
+  rhythm: {
+    bpm: number;
+    swing: boolean;
+    clickBeats: number[] | null;
+    callEvery: boolean;
+    /** clean answers in a row that finish it */
+    target: number;
+    windowMs: number;
+  };
   set: (patch: Partial<Settings>) => void;
 }
 
@@ -49,6 +59,7 @@ export const useSettings = create<Settings>()(
       displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, calibratedAt: null, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
       visualPulse: true, speakPrompts: false, hintStyle: 'both', level: 'fluency', onboarded: false, courseStage: {}, tuneStage: {}, tuneMemory: {}, reference: {},
       melodyRun: { swing: true, subdivision: 'eighth', clickBeats: [1, 3], clickSubdivision: 1, countInBars: 1, choruses: 1, useWritten: true },
+      rhythm: { bpm: 120, swing: true, clickBeats: null, callEvery: true, target: 3, windowMs: 80 },
       set: (patch) => set(patch),
     }),
     { name: 'shed.settings', partialize: (s) => Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v !== 'function')) as Partial<Settings> },
