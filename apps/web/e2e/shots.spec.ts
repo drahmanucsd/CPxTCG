@@ -41,9 +41,8 @@ async function finishDrill(page: Page) {
 test('screen views', async ({ page }) => {
   test.setTimeout(420_000);
 
-  // --- onboard
+  // There is no onboarding step any more — Today is the landing screen.
   await page.goto('/');
-  await page.getByText('Chasing fluency').click();
 
   // --- real practice history: consistent misses in a few keys, so the heatmap has cold cells
   //     and Today can build a weak-spot block out of them
@@ -72,7 +71,7 @@ test('screen views', async ({ page }) => {
     await page.goto(`/drill/${drill}`);
     await page.getByRole('button', { name: 'Start' }).click();
     await started(page);
-    await expect(page.getByText('Count-in')).toBeHidden({ timeout: 8000 });
+    await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 8000 });
     for (let i = 0; i < reps; i++) {
       const t = await target(page);
       if (!t) break;
@@ -93,7 +92,7 @@ test('screen views', async ({ page }) => {
   await page.goto('/drill/rootless-iiVI-4ths-120');
   await page.getByRole('button', { name: 'Start' }).click();
   await started(page);
-  await expect(page.getByText('Count-in')).toBeHidden({ timeout: 8000 });
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 8000 });
   const first = await answer(page, false);            // one clean chord, so the counters read 1 / 0
   const second = await nextTarget(page, first!.index); // wrong on the FIRST attempt of a fresh chord
   await play(page, bend(second.notes, 0));
@@ -115,10 +114,11 @@ test('screen views', async ({ page }) => {
   // --- a tune, chart with the bar cursor and per-bar results
   await page.goto('/tunes');
   await page.getByText('I Got Rhythm').click();
-  await page.getByRole('button', { name: /Play with the band/ }).click();
+  await page.getByRole('button', { name: '7. In time' }).click();
+  await page.getByRole('button', { name: 'Play with the band', exact: true }).click();
   await page.getByRole('button', { name: 'Start' }).click();
   await started(page);
-  await expect(page.getByText('Count-in')).toBeHidden({ timeout: 8000 });
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 8000 });
   for (let i = 0; i < 9; i++) await answer(page, i === 3 || i === 6);
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${OUT}/drill-tune.png` });
@@ -147,9 +147,29 @@ test('screen views', async ({ page }) => {
   await page.goto('/tunes/builtin-body-and-soul');
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${OUT}/tune.png` });
-  await page.getByText('Guide tones').click();
+  await page.getByRole('button', { name: '5. Guide tones' }).click();
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}/tune-guide.png` });
+
+  // --- the head against the click, and the analysis it produces
+  await page.goto('/melody/builtin-autumn-leaves');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: `${OUT}/melody.png` });
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByText('Counting in…')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 8000 });
+  // the head, roughly: a few notes placed a little behind, then a few rushed
+  await page.evaluate(async () => {
+    const line = [71, 72, 74, 79, 77, 76, 74, 71];
+    for (let i = 0; i < line.length; i++) {
+      window.__shed!.noteOn(line[i]!);
+      await new Promise((r) => setTimeout(r, 240 + (i < 4 ? 40 : -20)));
+      window.__shed!.noteOff(line[i]!);
+    }
+  });
+  await page.getByRole('button', { name: 'Stop' }).click();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${OUT}/melody-report.png`, fullPage: true });
 
   await page.goto('/devices');
   await page.evaluate(() => { for (const n of [53, 57, 60, 64]) window.__shed!.noteOn(n); });
