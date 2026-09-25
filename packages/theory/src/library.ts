@@ -6,8 +6,8 @@
  *   - Chord symbols only. A chord progression is a functional skeleton that every fake book,
  *     teacher and player writes out differently; the melody is the part that is actually the
  *     composition, and no melody ships with this app. See docs/13-melody-timing.md.
- *   - Most of these compositions are in the US public domain (published ≤ 1930). Tune Up, Misty
- *     and Autumn Leaves are not, and are here as changes alone for that reason.
+ *   - Most of these compositions are in the US public domain (published ≤ 1930). Tune Up, Misty,
+ *     Autumn Leaves and April in Paris are not, and are here as changes alone for that reason.
  */
 import { parseChartText } from './chartText.js';
 import type { Song } from './song.js';
@@ -178,6 +178,13 @@ key: G- | style: swing | tempo: 120
 [A] { Cm7 | F7 | Bbmaj7 | Ebmaj7 | Am7b5 | D7b9 | Gm6 | Gm6 }
 [B] Am7b5 | D7b9 | Gm6 | Gm6 | Cm7 | F7 | Bbmaj7 | Bbmaj7 |
 [C] Am7b5 | D7b9 | Gm7 | Gb7 | Fm7 | E7 | Am7b5 D7b9 | Gm6 |`,
+`title: April in Paris
+composer: Vernon Duke
+key: C | style: swing | tempo: 112
+[A] Fm6/G | Cmaj7 | Dm7b5 | G7 | Cmaj7 | Cmaj7 | Gm7 | C7 |
+[B] Fmaj7 | Fmaj7 | Bm7b5 E7 | Am7 Am7/G | F#m7b5 | B7#5 | Bm7 E7 | Em7b5 A7 |
+[C] F#m7b5 Fdim7 | C/E Ebdim7 | Dm7b5 | C/E | Bm7b5 E7 | Am7 Am7/G | F#m7b5 B7#5 | Emaj7:2 Dm7:1 G7:1 |
+[D] Fm6/G | Cmaj7 | Em7b5 | A7#5 | D7 | Dm7 G7 | C6 | C6 |`,
 ];
 
 let cache: Song[] | null = null;
