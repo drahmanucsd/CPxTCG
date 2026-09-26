@@ -23,6 +23,13 @@ export interface Melody {
   /** beats per bar the melody was written in */
   beatsPerBar: number;
   notes: MelodyNote[];
+  /**
+   * Beat position of every bar line, when the source had them.
+   *
+   * Kept because ABC does not pad a short bar, so once the notes are laid out the mistake is
+   * invisible: the bar lines are the only record of where the writer *meant* the bars to be.
+   */
+  barStarts?: number[];
   /** where it came from: shipped with the app, typed in, or played in by the user */
   source: 'builtin' | 'abc' | 'recorded';
 }
@@ -30,13 +37,19 @@ export interface Melody {
 const STEP: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
 
 /**
- * Parse the subset of ABC we use for lead lines: note letters with octave marks, accidentals,
- * durations as multiples/fractions of the default note length, rests, ties ignored, bar lines
- * treated as whitespace.
+ * Parse the subset of ABC we use for lead lines.
  *
  *   "L:1/4" default length, "M:4/4" metre, "K:Bb" key (accidentals applied automatically)
  *   C D E F | G2 A2 | z4 |
- *   ^C _D =E  sharp / flat / natural      C, C,, lower octaves     c c' higher
+ *   ^C _D =E   sharp / flat / natural      C, C,, lower octaves     c c' higher
+ *   C4-|C4     a tie: ONE note held, not two
+ *   (3ABC      a triplet: three notes in the time of two
+ *   A>B        broken rhythm: A dotted, B halved
+ *
+ * Ties and tuplets are not decoration. A tie across the bar line is how a fake book writes an
+ * anticipation — one attack on the "and of 4" that rings through the downbeat — and playing it as
+ * two notes is one of the commonest things a player who learned by ear gets wrong. If the parser
+ * cannot tell those apart, nothing downstream can either.
  */
 export function parseAbc(src: string): Melody {
   let unitBeats = 1;          // beats per default note length
@@ -64,42 +77,94 @@ export function parseAbc(src: string): Melody {
     body.push(line);
   }
 
-  const notes: MelodyNote[] = [];
-  let at = 0;
   const text = body.join(' ');
-  const re = /(\^{1,2}|_{1,2}|=)?([A-Ga-gz])([,']*)(\d+)?(?:\/(\d+))?(\/*)/g;
-  let m: RegExpExecArray | null;
+  const notes: MelodyNote[] = [];
   const barAccidentals = new Map<string, number>();
-  for (const chunk of text.split('|')) {
-    barAccidentals.clear();
-    re.lastIndex = 0;
-    while ((m = re.exec(chunk))) {
-      const [, acc, letter, octaves, num, den, slashes] = m;
-      let mult = num ? +num : 1;
-      if (den) mult = mult / +den;
-      if (slashes) mult = mult / Math.pow(2, slashes.length);
-      const beats = unitBeats * mult;
-      if (letter === 'z') { notes.push({ midi: null, start: at, beats }); at += beats; continue; }
+  const barStarts: number[] = [0];
+  let at = 0;
+  let i = 0;
+  /** notes still owed the tuplet multiplier, and what it is */
+  let tuplet: { left: number; mult: number } | null = null;
+  /** a '>' or '<' waiting for the note after it */
+  let broken = 0;
+  /** the previous note is tied into whatever comes next at the same pitch */
+  let tied = false;
 
-      const upper = letter!.toUpperCase();
-      let midi = 60 + STEP[upper]!;
-      if (letter === letter!.toLowerCase()) midi += 12;    // lower-case = the octave above middle C
-      for (const o of octaves ?? '') midi += o === ',' ? -12 : 12;
-
-      let alter: number | undefined;
-      if (acc === '^') alter = 1; else if (acc === '^^') alter = 2;
-      else if (acc === '_') alter = -1; else if (acc === '__') alter = -2;
-      else if (acc === '=') alter = 0;
-      if (alter !== undefined) barAccidentals.set(upper, alter);
-      else if (barAccidentals.has(upper)) alter = barAccidentals.get(upper)!;
-      else alter = keyAccidentals[upper] ?? 0;
-
-      notes.push({ midi: midi + alter, start: at, beats });
-      at += beats;
+  while (i < text.length) {
+    const c = text[i]!;
+    if (c === '|') {
+      barAccidentals.clear();
+      if (barStarts[barStarts.length - 1] !== at) barStarts.push(at);   // '||' and '|:' are one line
+      i++;
+      continue;
     }
+    if (c === '>' || c === '<') {
+      // A>B lengthens A and shortens B, so the note already emitted has to be corrected
+      const prev = notes[notes.length - 1];
+      const factor = c === '>' ? 1.5 : 0.5;
+      if (prev) { const delta = prev.beats * (factor - 1); prev.beats += delta; at += delta; }
+      broken = c === '>' ? -1 : 1;     // the next note takes the opposite adjustment
+      i++;
+      continue;
+    }
+    // tuplets: (p, (p:q, (p:q:r
+    const tup = /^\((\d)(?::(\d)?(?::(\d)?)?)?/.exec(text.slice(i));
+    if (tup && tup[1]) {
+      const p = +tup[1];
+      const q = tup[2] ? +tup[2] : TUPLET_TIME[p] ?? 2;
+      const r = tup[3] ? +tup[3] : p;
+      tuplet = { left: r, mult: q / p };
+      i += tup[0].length;
+      continue;
+    }
+    const note = /^(\^{1,2}|_{1,2}|=)?([A-Ga-gz])([,']*)(\d+)?(?:\/(\d+))?(\/*)(-)?/.exec(text.slice(i));
+    if (!note) { i++; continue; }                       // slurs, ornaments, spaces: skipped
+    const [whole, acc, letter, octaves, num, den, slashes, tie] = note;
+    i += whole.length;
+
+    let mult = num ? +num : 1;
+    if (den) mult = mult / +den;
+    if (slashes) mult = mult / Math.pow(2, slashes.length);
+    if (tuplet) { mult *= tuplet.mult; if (--tuplet.left <= 0) tuplet = null; }
+    if (broken !== 0) { mult *= broken > 0 ? 1.5 : 0.5; broken = 0; }
+    const beats = unitBeats * mult;
+
+    if (letter === 'z') {
+      notes.push({ midi: null, start: at, beats });
+      at += beats;
+      tied = false;
+      continue;
+    }
+
+    const upper = letter!.toUpperCase();
+    let midi = 60 + STEP[upper]!;
+    if (letter === letter!.toLowerCase()) midi += 12;    // lower-case = the octave above middle C
+    for (const o of octaves ?? '') midi += o === ',' ? -12 : 12;
+
+    let alter: number | undefined;
+    if (acc === '^') alter = 1; else if (acc === '^^') alter = 2;
+    else if (acc === '_') alter = -1; else if (acc === '__') alter = -2;
+    else if (acc === '=') alter = 0;
+    if (alter !== undefined) barAccidentals.set(upper, alter);
+    else if (barAccidentals.has(upper)) alter = barAccidentals.get(upper)!;
+    else alter = keyAccidentals[upper] ?? 0;
+    const pitch = midi + alter;
+
+    const prev = notes[notes.length - 1];
+    if (tied && prev && prev.midi === pitch) {
+      // one note, held — not two
+      prev.beats += beats;
+    } else {
+      notes.push({ midi: pitch, start: at, beats });
+    }
+    at += beats;
+    tied = !!tie;
   }
-  return { beatsPerBar, notes, source: 'abc' };
+  return { beatsPerBar, notes, source: 'abc', barStarts };
 }
+
+/** ABC's defaults for "p notes in the time of q", in a simple metre. */
+const TUPLET_TIME: Record<number, number> = { 2: 3, 3: 2, 4: 3, 5: 2, 6: 2, 7: 2, 8: 3, 9: 2 };
 
 const SHARP_ORDER = ['F', 'C', 'G', 'D', 'A', 'E', 'B'];
 const FLAT_ORDER = ['B', 'E', 'A', 'D', 'G', 'C', 'F'];
@@ -255,4 +320,25 @@ export function alignMelody(
     missed: wantIdx.filter((_, k) => !matchedWant.has(k)).map((x) => x.i),
     extra: played.map((_, k) => k).filter((k) => !matchedGot.has(k)),
   };
+}
+
+/**
+ * Bars whose note lengths do not add up to the metre.
+ *
+ * ABC does not pad a short bar — it just starts the next note early, which silently shifts
+ * everything after it. That is invisible when you read the text back and catastrophic when the
+ * result is used as a reference: every later note is graded against the wrong beat. Anyone
+ * typing a head in will do this, so it has to be caught at the door.
+ */
+export function shortBars(m: Melody): Array<{ bar: number; beats: number }> {
+  const per = m.beatsPerBar || 4;
+  const lines = m.barStarts;
+  if (!lines || lines.length < 2) return [];          // no bar lines recorded: nothing to check
+  const out: Array<{ bar: number; beats: number }> = [];
+  // the final bar is not checked: a head often ends mid-bar, and the source may simply stop
+  for (let i = 0; i < lines.length - 2; i++) {
+    const beats = lines[i + 1]! - lines[i]!;
+    if (Math.abs(beats - per) > 1e-6) out.push({ bar: i, beats: Math.round(beats * 1000) / 1000 });
+  }
+  return out;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignMelody, gradeMelody, parseAbc, quantise, toAbc, transposeMelody } from '../src/melody.js';
+import { alignMelody, gradeMelody, parseAbc, quantise, shortBars, toAbc, transposeMelody } from '../src/melody.js';
 import { midiName } from '../src/pitch.js';
 
 const names = (src: string) => parseAbc(src).notes.map((n) => (n.midi === null ? 'z' : midiName(n.midi)));
@@ -97,5 +97,53 @@ describe('alignMelody', () => {
   it('matches across octaves unless told not to', () => {
     expect(alignMelody(head, [72, 74, 76, 77]).pairs).toHaveLength(4);
     expect(alignMelody(head, [72, 74, 76, 77], { octaveSensitive: true }).pairs).toHaveLength(0);
+  });
+});
+
+describe('notation a fake book actually uses', () => {
+  const starts = (src: string) => parseAbc(src).notes.map((n) => [n.start, n.beats]);
+
+  it('a tie is one held note, not two', () => {
+    // the anticipation as it is written: an eighth on the "and of 4", tied over the bar line
+    const tied = parseAbc('M:4/4\nL:1/8\nK:C\nz6 G G-|G8 |');
+    const struck = tied.notes.filter((n) => n.midi !== null);
+    expect(struck).toHaveLength(2);
+    expect(struck[1]!.start).toBe(3.5);
+    expect(struck[1]!.beats).toBe(4.5);          // held through the whole of bar 2
+    // the same line without the tie is two attacks, which is the mistake being diagnosed
+    const split = parseAbc('M:4/4\nL:1/8\nK:C\nz6 G G|G8 |');
+    expect(split.notes.filter((n) => n.midi !== null)).toHaveLength(3);
+  });
+
+  it('a tie only joins the same pitch', () => {
+    const m = parseAbc('M:4/4\nL:1/4\nK:C\nC-D C-C |');
+    expect(m.notes.map((n) => n.beats)).toEqual([1, 1, 2]);
+  });
+
+  it('triplets are three in the time of two', () => {
+    expect(starts('M:4/4\nL:1/4\nK:C\n(3CDE F |')).toEqual([
+      [0, 2 / 3], [2 / 3, 2 / 3], [4 / 3, 2 / 3], [2, 1],
+    ]);
+  });
+
+  it('the tuplet only covers its own notes', () => {
+    const n = parseAbc('M:4/4\nL:1/8\nK:C\n(3CDE FGAB |').notes;
+    expect(n.slice(0, 3).every((x) => Math.abs(x.beats - 1 / 3) < 1e-9)).toBe(true);
+    expect(n.slice(3).every((x) => x.beats === 0.5)).toBe(true);
+  });
+
+  it('broken rhythm dots the first and halves the second', () => {
+    expect(starts('M:4/4\nL:1/4\nK:C\nC>D E |')).toEqual([[0, 1.5], [1.5, 0.5], [2, 1]]);
+    expect(starts('M:4/4\nL:1/4\nK:C\nC<D E |')).toEqual([[0, 0.5], [0.5, 1.5], [2, 1]]);
+  });
+});
+
+describe('shortBars', () => {
+  it('catches a bar that does not add up, because it shifts everything after it', () => {
+    expect(shortBars(parseAbc('M:4/4\nL:1/4\nK:C\nC D E | F G A B | c4 |'))).toEqual([{ bar: 0, beats: 3 }]);
+    expect(shortBars(parseAbc('M:4/4\nL:1/4\nK:C\nC D E z | F G A B | c4 |'))).toEqual([]);
+  });
+  it('lets the last bar be short, because heads end mid-bar', () => {
+    expect(shortBars(parseAbc('M:4/4\nL:1/4\nK:C\nC D E F | G2 |'))).toEqual([]);
   });
 });
