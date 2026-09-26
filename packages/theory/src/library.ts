@@ -174,10 +174,11 @@ key: Eb | style: ballad | tempo: 68
 
 `title: Autumn Leaves
 composer: Joseph Kosma
-key: G- | style: swing | tempo: 120
-[A] { Cm7 | F7 | Bbmaj7 | Ebmaj7 | Am7b5 | D7b9 | Gm6 | Gm6 }
-[B] Am7b5 | D7b9 | Gm6 | Gm6 | Cm7 | F7 | Bbmaj7 | Bbmaj7 |
-[C] Am7b5 | D7b9 | Gm7 | Gb7 | Fm7 | E7 | Am7b5 D7b9 | Gm6 |`,
+key: E- | style: swing | tempo: 120
+[A] { Am7 | D7 | Gmaj7 | Cmaj7 | F#m7b5 | B7 | 1) Em | Em }
+2) Em | Em |
+[B] F#m7b5 | B7b9 | Em | Em | Am7 | D7 | Gmaj7 | Gmaj7 |
+[C] F#m7b5 | B7b9 | Em7 A7 | Dm7 G7 | F#m7b5 | B7b9 | Em | Em |`,
 `title: April in Paris
 composer: Vernon Duke
 key: C | style: swing | tempo: 112
