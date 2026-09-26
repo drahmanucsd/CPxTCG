@@ -308,10 +308,21 @@ function round(x: number, dp = 0): number { const f = Math.pow(10, dp); return M
  */
 function measureSwing(notes: PlacedNote[], grid: Grid, bpm: number, sub: Subdivision): SwingMeasure | null {
   if (sub === 'quarter') return null;
+  return measureSwingAt(
+    notes.filter((n) => n.slot !== 0).map((n) => (n.time - grid.startTime) / grid.beatDuration),
+    bpm,
+  );
+}
+
+/**
+ * Swing measured from raw beat positions: the median position of the off-beats inside their beat.
+ *
+ * Exported because every comparison wants it and none of them should have to build a PlacedNote
+ * to ask. Positions outside 0.25..0.85 of a beat are not off-beats and are ignored.
+ */
+export function measureSwingAt(beatPositions: number[], bpm: number): SwingMeasure | null {
   const fracs: number[] = [];
-  for (const n of notes) {
-    if (n.slot === 0) continue;
-    const x = (n.time - grid.startTime) / grid.beatDuration;
+  for (const x of beatPositions) {
     const f = x - Math.floor(x);
     if (f > 0.25 && f < 0.85) fracs.push(f);
   }

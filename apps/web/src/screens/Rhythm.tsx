@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { CallResponse, type CallResponseSpec, type Phase } from '@shed/engine';
 import {
-  FIGURES, type Figure, type FigureVerdict, figureBeats, figureCount, figuresFromMelody, pushIndices, swingRatio,
-} from '@shed/theory';
+  CallResponse, type Answer, type CallContent, type CallResponseSpec, type Phase, figureCall, phraseCall,
+} from '@shed/engine';
+import { FIGURES, type Figure, figureCount, pushIndices, swingRatio } from '@shed/theory';
 import { getAudio, unlockAudio } from '../audio/context';
 import { onMidiNote, startMidi, useComputerKeyboardPiano } from '../midi/midiService';
 import { useSettings } from '../store/settings';
@@ -13,18 +13,22 @@ import { loadSong } from '../lib/songs';
 import { BackLink } from '../components/BackLink';
 import { BeatPulse } from '../components/BeatPulse';
 import { FigureStrip } from '../components/FigureStrip';
+import { MelodyView, NoteList } from '../components/MelodyView';
 import { TempoControl } from '../components/TempoControl';
 
 /**
- * Hear a bar, play it back, be told where you put it.
+ * Hear a phrase, play it back, be told exactly what you did.
  *
- * The pitches do not matter here and are not graded — play it on one note if you like. What is
- * being trained is placement, and specifically the push: the note that belongs to the next bar,
- * played an eighth early. Getting that wrong is what makes a head sound stiff, and it is
- * invisible to every other screen in this app, because playing it on the downbeat is not a wrong
- * note and it is not really "late" either — it is a different rhythm.
+ * Two sources, because there are two different problems:
  *
- * You are done when you get it right N times in a row. Once is luck.
+ *   - **the ladder** — placement on one note. For when you cannot feel where the "and of 4" is
+ *     at all, and pitches would only be in the way.
+ *   - **the head** — real bars of the tune, graded on pitch, duration and placement together.
+ *     For when you learned it off a recording and the errors are specific: a held note you play
+ *     twice, an F sharp where the book has F natural, a syncopation you flatten onto the
+ *     downbeat, a triplet you play as two eighths.
+ *
+ * The second is the one that needs the book. It only appears once this tune has a melody.
  */
 export default function Rhythm() {
   const { songId } = useParams();
@@ -39,7 +43,7 @@ export default function Rhythm() {
   const [round, setRound] = useState(0);
   const [beat, setBeat] = useState({ bar: 0, beat: 0, countIn: false, index: -1 });
   const [live, setLive] = useState<number[]>([]);
-  const [last, setLast] = useState<FigureVerdict | null>(null);
+  const [last, setLast] = useState<Answer | null>(null);
   const [streak, setStreak] = useState(0);
   const [best, setBest] = useState(0);
   const [done, setDone] = useState<{ rounds: number; best: number } | null>(null);
@@ -51,45 +55,42 @@ export default function Rhythm() {
 
   useEffect(() => { if (id) void loadSong(id).then((s) => setTitle(s?.title ?? null)); }, [id]);
   const head = useLiveQuery(async () => (id ? await db.melodies.get(id) : undefined), [id]);
+  const melody = head?.melody ?? null;
+  const beatsPerBar = melody?.beatsPerBar || 4;
+  const headBars = melody ? Math.max(1, Math.round(head!.formBeats / beatsPerBar)) : 0;
+  const source: 'ladder' | 'head' = melody && cfg.source === 'head' ? 'head' : 'ladder';
 
-  /** The ladder, plus the phrases of your own head when there is one to cut up. */
-  const figures: Figure[] = useMemo(() => {
-    if (!head?.melody) return FIGURES;
-    const cut = figuresFromMelody(head.melody.notes, {
-      bars: 2, beatsPerBar: head.melody.beatsPerBar, bpm: cfg.bpm, swing: cfg.swing,
-      totalBars: Math.round(head.formBeats / head.melody.beatsPerBar),
-    });
-    // the bars with a push in them are the reason you are here, so they come first
-    const withPush = cut.filter((f) => pushIndices(f).length);
-    return [...FIGURES, ...withPush, ...cut.filter((f) => !pushIndices(f).length)];
-  }, [head, cfg.bpm, cfg.swing]);
+  const figure: Figure = FIGURES.find((f) => f.id === figureId) ?? FIGURES[0]!;
+  const fromBar = Math.min(cfg.fromBar, Math.max(0, headBars - cfg.bars));
 
-  const figure = figures.find((f) => f.id === figureId) ?? figures[0]!;
-  const beats = useMemo(() => figureBeats(figure, cfg.bpm, cfg.swing), [figure, cfg.bpm, cfg.swing]);
-  const pushes = pushIndices(figure);
+  const call: CallContent = useMemo(
+    () => (source === 'head' && melody
+      ? phraseCall(melody, fromBar, cfg.bars, cfg.bpm, cfg.swing)
+      : figureCall(figure, cfg.bpm, cfg.swing)),
+    [source, melody, fromBar, cfg.bars, cfg.bpm, cfg.swing, figure],
+  );
+  const pushes = source === 'head' ? [] : pushIndices(figure);
   const offBeat = cfg.swing ? swingRatio(cfg.bpm) : 0.5;
 
   const spec = useCallback((): CallResponseSpec => ({
-    figure,
+    call,
     bpm: cfg.bpm,
-    timeSig: { beats: 4, unit: 4 },
+    timeSig: { beats: beatsPerBar, unit: 4 },
     countInBars: 1,
     swing: cfg.swing,
     clickBeats: cfg.clickBeats,
     callEvery: cfg.callEvery,
     target: cfg.target,
     windowMs: cfg.windowMs,
-    voice: [72],
     latencyMs: settings.latencyOffsetMs,
     maxRounds: 24,
-  }), [cfg, figure, settings.latencyOffsetMs]);
+  }), [call, beatsPerBar, cfg, settings.latencyOffsetMs]);
 
   const wire = (cr: CallResponse) => {
     const { piano } = getAudio();
     cr.on('play', (p) => piano.playChord(p.notes, p.time, p.duration, p.velocity));
   };
 
-  /** Play it once without committing to a run. */
   const hear = async () => {
     await unlockAudio();
     const { clock, transport } = getAudio();
@@ -100,7 +101,7 @@ export default function Rhythm() {
 
   const start = useCallback(async () => {
     startMidi();
-    try { await Promise.race([unlockAudio(), new Promise((r) => setTimeout(r, 1500))]); } catch { /* silent click; the drill still grades */ }
+    try { await Promise.race([unlockAudio(), new Promise((r) => setTimeout(r, 1500))]); } catch { /* silent click; it still grades */ }
     const { transport } = getAudio();
     const cr = new CallResponse({ spec: spec(), transport });
     crRef.current = cr;
@@ -115,7 +116,7 @@ export default function Rhythm() {
     cr.on('hit', (h) => { if (!abandoned.current) setLive((xs) => [...xs, h.beat]); });
     cr.on('result', (r) => {
       if (abandoned.current) return;
-      setLast(r.verdict); setStreak(r.streak); setBest(r.best);
+      setLast(r.answer); setStreak(r.streak); setBest(r.best);
     });
     cr.on('end', (e) => { if (!abandoned.current) { setDone({ rounds: e.rounds, best: e.best }); setPhase('ended'); } });
     offRef.current?.();
@@ -136,7 +137,10 @@ export default function Rhythm() {
           <BackLink to={id ? `/tunes/${encodeURIComponent(id)}` : '/tunes'} label={title ?? 'Tunes'} />
           <h1 className="text-3xl font-semibold tracking-tight mt-1">Hear it, play it back</h1>
           <div className="text-ink-dim mt-1">
-            Placement only — play it on any note. {cfg.target} clean in a row and you are done.
+            {source === 'head'
+              ? `${call.label} of ${title ?? 'the head'} — pitch, length and placement all count.`
+              : 'Placement only — play it on any note.'}
+            {' '}{cfg.target} clean in a row and you are done.
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -147,26 +151,31 @@ export default function Rhythm() {
         </div>
       </div>
 
-      {/* --------------------------------------------------------- the figure */}
+      {/* --------------------------------------------------------- what you are playing */}
       <section className="card space-y-3">
         <div className="flex flex-wrap items-baseline gap-3">
-          <div className="text-lg font-medium">{figure.name}</div>
-          <code className="text-sm text-accent tabular-nums">{figureCount(figure)}</code>
+          <div className="text-lg font-medium">{call.label}</div>
+          {source === 'ladder' && <code className="text-sm text-accent tabular-nums">{figureCount(figure)}</code>}
           {pushes.length > 0 && (
             <span className="text-[10px] rounded px-1.5 py-0.5 bg-warn/20 text-warn">
               {pushes.length} push{pushes.length > 1 ? 'es' : ''} across the bar line
             </span>
           )}
-          <span className="ml-auto text-sm text-ink-dim">{figure.bars} bar{figure.bars > 1 ? 's' : ''}</span>
+          <span className="ml-auto text-sm text-ink-dim">{call.bars} bar{call.bars > 1 ? 's' : ''}</span>
         </div>
-        {figure.blurb && <div className="text-sm text-ink-dim">{figure.blurb}</div>}
-        <FigureStrip expected={beats} verdict={last} offBeat={offBeat} live={live} />
+        {source === 'ladder' && figure.blurb && <div className="text-sm text-ink-dim">{figure.blurb}</div>}
+
+        {source === 'head' && last?.melody
+          ? <MelodyView comparison={last.melody} beatsPerBar={beatsPerBar} bars={cfg.bars} />
+          : source === 'head'
+            ? <div className="text-sm text-ink-faint">Press Hear it, then play it back. The book&rsquo;s notes and yours both appear here afterwards.</div>
+            : <FigureStrip expected={call.notes.map((n) => n.beat)} verdict={last?.figure ?? null} offBeat={offBeat} live={live} beatsPerBar={beatsPerBar} />}
       </section>
 
       {/* --------------------------------------------------------- running */}
       {running && (
         <section className={`card space-y-3 ${phase === 'response' ? 'border-accent/60' : ''}`}>
-          <BeatPulse beats={4} current={beat.beat} countIn={beat.countIn} />
+          <BeatPulse beats={beatsPerBar} current={beat.beat} countIn={beat.countIn} />
           <div className="flex flex-wrap items-baseline gap-4">
             <div className="text-2xl font-semibold">
               {beat.countIn ? 'Counting in…' : phase === 'call' ? 'Listen' : 'Your turn'}
@@ -185,52 +194,83 @@ export default function Rhythm() {
 
       {/* --------------------------------------------------------- feedback */}
       {last && (
-        <section className={`card space-y-1 ${last.ok ? 'border-good/50' : last.flattened ? 'border-bad/50' : ''}`}>
-          <div className={`text-lg font-medium ${last.ok ? 'text-good' : last.flattened ? 'text-bad' : 'text-warn'}`}>{last.headline}</div>
-          {last.advice && <div className="text-sm text-ink-dim">{last.advice}</div>}
+        <section className={`card space-y-2 ${last.ok ? 'border-good/50' : 'border-bad/50'}`}>
+          <div className={`text-lg font-medium ${last.ok ? 'text-good' : 'text-bad'}`}>{last.headline}</div>
+          {last.melody
+            ? <NoteList comparison={last.melody} />
+            : last.advice && <div className="text-sm text-ink-dim">{last.advice}</div>}
         </section>
       )}
 
       {done && (
         <section className="card">
           <div className="text-lg font-medium">
-            {done.best >= cfg.target ? `${cfg.target} in a row — that placement is yours.` : `Stopped after ${done.rounds} rounds. Best run: ${done.best}.`}
+            {done.best >= cfg.target ? `${cfg.target} in a row — that one is yours.` : `Stopped after ${done.rounds} rounds. Best run: ${done.best}.`}
           </div>
           <div className="text-sm text-ink-dim mt-1">
             {done.best >= cfg.target
-              ? 'Take it up ten bpm, or move to the next figure.'
-              : 'Slow the tempo down until it is easy, then creep it back up. Placement never improves by trying harder at a tempo you cannot hold.'}
+              ? 'Take it up ten bpm, or move on to the next bars.'
+              : 'Slow it down until it is easy, then creep it back up. Placement never improves by trying harder at a tempo you cannot hold.'}
           </div>
         </section>
       )}
 
-      {/* --------------------------------------------------------- pick one */}
+      {/* --------------------------------------------------------- pick what to drill */}
       {!running && (
         <section className="space-y-2">
-          <div className="label">The ladder</div>
-          <div className="grid sm:grid-cols-2 gap-2">
-            {figures.map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setFigureId(f.id)}
-                className={`card text-left hover:border-accent/60 ${f.id === figure.id ? 'border-accent' : ''}`}
-              >
-                <div className="flex items-baseline gap-2">
-                  <span className="font-medium">{f.name}</span>
-                  <code className="text-xs text-accent tabular-nums">{figureCount(f)}</code>
-                  <span className="ml-auto text-[10px] text-ink-faint">
-                    {f.source === 'head' ? 'your head' : `level ${f.level}`}
-                  </span>
-                </div>
-                {f.blurb && <div className="text-xs text-ink-dim mt-1 line-clamp-2">{f.blurb}</div>}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="label flex-1">What to drill</div>
+            {melody && (
+              <div className="flex gap-1">
+                <Seg on={source === 'ladder'} onClick={() => setCfg({ source: 'ladder' })}>rhythm ladder</Seg>
+                <Seg on={source === 'head'} onClick={() => setCfg({ source: 'head' })}>this tune&rsquo;s head</Seg>
+              </div>
+            )}
           </div>
-          {id && !head && (
+
+          {source === 'head' ? (
+            <div className="card space-y-3">
+              <Row label="Bars">
+                {[1, 2, 4].map((n) => (
+                  <Seg key={n} on={cfg.bars === n} onClick={() => setCfg({ bars: n })}>{n} at a time</Seg>
+                ))}
+              </Row>
+              <div className="flex flex-wrap gap-1">
+                {Array.from({ length: Math.max(1, Math.ceil(headBars / cfg.bars)) }, (_, i) => i * cfg.bars).map((b) => (
+                  <button
+                    key={b}
+                    className={`rounded-md px-2 py-1 text-xs tabular-nums ${b === fromBar ? 'bg-accent text-bg' : 'bg-panel-2 text-ink-faint hover:text-ink'}`}
+                    onClick={() => setCfg({ fromBar: b })}
+                  >{b + 1}–{Math.min(headBars, b + cfg.bars)}</button>
+                ))}
+              </div>
+              <div className="text-xs text-ink-faint">
+                The head has {headBars} bars. Pick the ones you keep getting wrong.
+              </div>
+            </div>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-2">
+              {FIGURES.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setFigureId(f.id)}
+                  className={`card text-left hover:border-accent/60 ${f.id === figure.id ? 'border-accent' : ''}`}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-medium">{f.name}</span>
+                    <code className="text-xs text-accent tabular-nums">{figureCount(f)}</code>
+                    <span className="ml-auto text-[10px] text-ink-faint">level {f.level}</span>
+                  </div>
+                  {f.blurb && <div className="text-xs text-ink-dim mt-1 line-clamp-2">{f.blurb}</div>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {id && !melody && (
             <div className="text-xs text-ink-faint">
-              Record the head on{' '}
-              <button className="text-accent hover:underline" onClick={() => nav(`/melody/${encodeURIComponent(id)}`)}>the timing screen</button>
-              {' '}and its own bars appear here, with the pushes marked.
+              To drill the actual notes of this tune, load its melody first —{' '}
+              <button className="text-accent hover:underline" onClick={() => nav(`/melody/${encodeURIComponent(id)}`)}>drop a MIDI file or paste notation</button>.
             </div>
           )}
         </section>
@@ -252,7 +292,7 @@ export default function Rhythm() {
               <Row label="Feel">
                 <Seg on={cfg.swing} onClick={() => setCfg({ swing: true })}>swing</Seg>
                 <Seg on={!cfg.swing} onClick={() => setCfg({ swing: false })}>straight</Seg>
-                <span className="text-xs text-ink-faint ml-2">Swing puts the off-beats where the tempo wants them, not halfway.</span>
+                <span className="text-xs text-ink-faint ml-2">Swing puts written off-beats where they should sound, so playing them correctly is not marked late.</span>
               </Row>
               <Row label="Call">
                 <Seg on={cfg.callEvery} onClick={() => setCfg({ callEvery: true })}>every time</Seg>
@@ -267,7 +307,7 @@ export default function Rhythm() {
                 {[50, 80, 120].map((n) => (
                   <Seg key={n} on={cfg.windowMs === n} onClick={() => setCfg({ windowMs: n })}>±{n} ms</Seg>
                 ))}
-                <span className="text-xs text-ink-faint ml-2">How close counts as hitting it.</span>
+                <span className="text-xs text-ink-faint ml-2">Never wide enough to confuse a triplet with an eighth, whatever you set.</span>
               </Row>
               <Row label="Click on">
                 <Seg on={cfg.clickBeats === null} onClick={() => setCfg({ clickBeats: null })}>every beat</Seg>

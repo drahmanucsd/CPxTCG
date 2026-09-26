@@ -117,6 +117,58 @@ The feedback is a picture, not a number: rings where the figure goes, dots where
 A flattened push is then unmistakable — the ring is on the "and" of 4 and the dot is over the bar
 line.
 
+## Note by note against the book
+
+Measuring placement is not enough for the commonest case there is: you learned the tune off a
+recording, and what you learned is subtly not what is written. Those errors are specific, and a
+percentage cannot express any of them.
+
+`compareMelody` (`packages/theory/src/compare.ts`) aligns by **time and pitch together**, keeps
+durations, and returns a verdict per written note:
+
+| verdict | what it means | why it is not something else |
+| --- | --- | --- |
+| `split` | the book holds one note, you struck it twice | not an extra note — a duration error |
+| `merged` | the book strikes again, you held through | not a missing note |
+| `wrongPitch` | F♯ where the book has F♮ | reported with the interval and direction |
+| `flat` | written on the "and of 4", played on the 1 | a different rhythm, not lateness |
+| `late` on a triplet | you subdivided the beat in two, not three | named as that, not as milliseconds |
+
+Three things it has to get right, each of which was wrong before it was fixed:
+
+- **Swing is applied to the written line before comparing.** A jazz head written in straight
+  eighths is *performed* with the off-beats late. Compare against the page and every off-beat in
+  the tune reads as an error.
+- **The tolerance is never wide enough to confuse adjacent subdivisions.** At 120 bpm the gap
+  between the middle of a triplet and a straight eighth is 83 ms, so a flat 90 ms window would
+  call that exact mistake clean. The window is capped at a fraction of the distance to the
+  nearest other legal position.
+- **The alignment finds the performance first.** Come in half a bar late — which happens whenever
+  you count yourself in — and a single nearest-match pass pairs every note with the wrong written
+  note, reporting a correct performance as a wall of wrong notes. A coarse search over
+  data-derived candidate shifts fixes it, and the shift is *reported* ("the whole phrase came in
+  about 2 beats late") rather than silently swallowed.
+
+## Getting a melody in
+
+Three routes, none of which ship content:
+
+1. **A standard MIDI file** (`packages/theory/src/midiFile.ts`) — the practical one. Format 0/1,
+   tempo and metre from the conductor track, top voice taken where notes overlap, quantised to
+   1/12 of a beat so eighths, triplets and sixteenths all land.
+2. **Typed ABC** — ties (`-`), tuplets (`(3`) and broken rhythm (`>`) are parsed, because a tie
+   across the bar line *is* how a fake book writes an anticipation. A bar whose lengths do not
+   add up is **refused**: ABC does not pad, so a short bar silently shifts every note after it.
+3. **Your own take** — still there, now with a warning attached. If you learned the tune by ear,
+   saving your performance makes your mistakes the reference. It is only useful when you already
+   know the version is right.
+
+## Drilling the bars you keep getting wrong
+
+`CallResponse` takes either a **figure** (placement on one note) or a **phrase** (real bars of the
+head, graded on pitch, duration and placement). Click a bar in the note-by-note report and it
+opens that phrase in the drill: hear it, play it back, until you get it right N times in a row.
+
 ## Fake books
 
 `Scan` opens a whole PDF and renders pages on demand, so a four-hundred-page book is usable

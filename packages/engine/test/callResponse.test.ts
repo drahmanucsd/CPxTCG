@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { FIGURE_BY_ID, figureBeats } from '@shed/theory';
-import { CallResponse, type CallResponseSpec } from '../src/callResponse.js';
+import { FIGURE_BY_ID, parseAbc } from '@shed/theory';
+import { CallResponse, type Answer, type CallResponseSpec, figureCall, phraseCall } from '../src/callResponse.js';
 import { makeTransport } from './helpers.js';
 
 const BPM = 120;
@@ -9,9 +9,9 @@ const BEAT = 0.5;
 function make(over: Partial<CallResponseSpec> = {}) {
   const { timers, transport, sink } = makeTransport(BPM, 1);
   const spec: CallResponseSpec = {
-    figure: FIGURE_BY_ID['push-into-1']!,
+    call: figureCall(FIGURE_BY_ID['push-into-1']!, BPM, false),
     bpm: BPM, timeSig: { beats: 4, unit: 4 }, countInBars: 1, swing: false,
-    clickBeats: null, callEvery: true, target: 2, windowMs: 80, voice: [72],
+    clickBeats: null, callEvery: true, target: 2, windowMs: 80,
     ...over,
   };
   const cr = new CallResponse({ spec, transport });
@@ -33,7 +33,7 @@ describe('CallResponse', () => {
     expect(phases).toEqual(['countIn', 'call']);
     timers.advance(2.5);                       // through the first bar of the call
     // push-into-1 is two bars: 1 2 3 4& then silence
-    expect(figureBeats(cr.spec.figure, BPM, false)).toEqual([0, 1, 2, 3.5]);
+    expect(cr.callBeats).toEqual([0, 1, 2, 3.5]);
     expect(plays).toEqual([0, 0.5, 1, 1.75]);
     // eight beats of call, then the response window opens
     timers.advance(1.5);
@@ -66,7 +66,7 @@ describe('CallResponse', () => {
     const { timers, cr } = make({ target: 3 });
     const results: string[] = [];
     const streaks: number[] = [];
-    cr.on('result', (r) => { results.push(r.verdict.headline); streaks.push(r.streak); });
+    cr.on('result', (r) => { results.push(r.answer.headline); streaks.push(r.streak); });
     cr.start(0);
     timers.advance(6.2);
     for (const b of [0, 1, 2, 3.5]) cr.feed({ type: 'on', note: 60, velocity: 90, time: t(8 + b) });
@@ -85,7 +85,7 @@ describe('CallResponse', () => {
     expect(cr.phase).toBe('call');
     for (const b of [0, 1, 2, 3.5]) cr.feed({ type: 'on', note: 60, velocity: 90, time: t(b) });
     let verdict: string | null = null;
-    cr.on('result', (r) => { verdict = r.verdict.headline; });
+    cr.on('result', (r) => { verdict = r.answer.headline; });
     timers.advance(8.0);   // through the response window, answering nothing
     expect(verdict).toBe('Nothing landed');
   });
@@ -108,5 +108,72 @@ describe('CallResponse', () => {
     timers.advance(30);
     expect(rounds).toBe(2);
     expect(cr.phase).toBe('ended');
+  });
+});
+
+describe('CallResponse over a real phrase', () => {
+  // two bars: C D E F | G held, with the G tied in from the "and of 4"
+  const melody = parseAbc('M:4/4\nL:1/4\nK:C\nC D E F- | F4 |');
+
+  function phrase(over: Partial<CallResponseSpec> = {}) {
+    const { timers, transport } = makeTransport(BPM, 1);
+    const spec: CallResponseSpec = {
+      call: phraseCall(melody, 0, 2, BPM, false),
+      bpm: BPM, timeSig: { beats: 4, unit: 4 }, countInBars: 1, swing: false,
+      clickBeats: null, callEvery: false, target: 1, windowMs: 80, maxRounds: 4,
+      ...over,
+    };
+    return { timers, cr: new CallResponse({ spec, transport }) };
+  }
+
+  const play = (cr: CallResponse, notes: Array<[number, number, number]>, from: number) => {
+    for (const [midi, start, len] of notes) {
+      cr.feed({ type: 'on', note: midi, velocity: 90, time: t(from + start) });
+      cr.feed({ type: 'off', note: midi, velocity: 0, time: t(from + start + len) });
+    }
+  };
+
+  it('plays the written pitches as the call, and grades pitch and duration in the answer', () => {
+    const { timers, cr } = phrase();
+    const pitches: number[] = [];
+    let answer: Answer | null = null;
+    cr.on('play', (p) => pitches.push(p.notes[0]!));
+    cr.on('result', (r) => { answer = r.answer; });
+    cr.start(0);
+    timers.advance(6.2);                      // count-in plus the two-bar call
+    expect(pitches).toEqual([60, 62, 64, 65]);
+    expect(cr.phase).toBe('response');
+    // the tie means one attack on beat 4 held for five beats, not two notes
+    play(cr, [[60, 0, 0.9], [62, 1, 0.9], [64, 2, 0.9], [65, 3, 4.9]], 8);
+    timers.advance(4.2);
+    expect(answer).not.toBeNull();
+    expect(answer!.ok).toBe(true);
+    expect(answer!.melody!.score).toBe(1);
+  });
+
+  it('striking the tied note again is reported as a split, and breaks the streak', () => {
+    const { timers, cr } = phrase();
+    let answer: Answer | null = null;
+    cr.on('result', (r) => { answer = r.answer; });
+    cr.start(0);
+    timers.advance(6.2);
+    play(cr, [[60, 0, 0.9], [62, 1, 0.9], [64, 2, 0.9], [65, 3, 0.9], [65, 4, 3.9]], 8);
+    timers.advance(4.2);
+    expect(answer!.ok).toBe(false);
+    expect(answer!.melody!.counts.split).toBe(1);
+    expect(answer!.headline).toMatch(/durations are not/);
+    expect(cr.streak).toBe(0);
+  });
+
+  it('a wrong note comes back named', () => {
+    const { timers, cr } = phrase();
+    let answer: Answer | null = null;
+    cr.on('result', (r) => { answer = r.answer; });
+    cr.start(0);
+    timers.advance(6.2);
+    play(cr, [[60, 0, 0.9], [62, 1, 0.9], [64, 2, 0.9], [66, 3, 4.9]], 8);   // F# for F
+    timers.advance(4.2);
+    expect(answer!.melody!.counts.wrongPitch).toBe(1);
+    expect(answer!.advice).toMatch(/you played F♯4; the book has F4/i);
   });
 });

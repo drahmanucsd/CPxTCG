@@ -13,8 +13,8 @@
  *     are *written*, which can see a note held too long where a bare grid cannot.
  */
 import {
-  type Grid, type Melody, type MelodyTimingReport, type Onset, type Subdivision, type TimingReport,
-  analyzeMelodyTiming, analyzeTiming, quantise, repeatMelody,
+  type Grid, type Melody, type MelodyComparison, type Onset, type PlayedNote, type Subdivision, type TimingReport,
+  analyzeTiming, compareMelody, quantise, repeatMelody,
 } from '@shed/theory';
 import { type Clock, Emitter } from './clock.js';
 import type { NoteEvent } from './capture.js';
@@ -55,8 +55,14 @@ export interface MelodyRunReport {
   grid: Grid;
   onsets: Onset[];
   timing: TimingReport;
-  /** only when a written melody was supplied */
-  melody: MelodyTimingReport | null;
+  /**
+   * Note by note against the written line — only when there is one.
+   *
+   * This is the report that can say "the book holds that note and you struck it twice", which
+   * is invisible to the grid-based analysis above: on a bare grid a re-struck note is simply an
+   * extra note in a legal place.
+   */
+  melody: MelodyComparison | null;
   /** the take itself, quantised — this is how a head gets into the app legitimately */
   take: Melody;
   /** bars of music actually covered */
@@ -182,12 +188,17 @@ export class MelodyRun extends Emitter<MelodyRunEvents> {
     const beatsPlayed = Math.max(0, (this.endedAt || this.clock.now()) - grid.startTime) / this.beatDuration;
     const bars = Math.max(0, Math.round(beatsPlayed / spec.timeSig.beats));
 
-    let melody: MelodyTimingReport | null = null;
+    let melody: MelodyComparison | null = null;
     if (spec.melody && spec.melody.notes.length) {
       const formBeats = spec.formBeats ?? spec.bars * spec.timeSig.beats;
       const passes = Math.max(1, Math.ceil(beatsPlayed / Math.max(1, formBeats)));
       const written = repeatMelody(spec.melody, passes, formBeats);
-      melody = analyzeMelodyTiming(written, onsets, grid, common);
+      melody = compareMelody(written, this.performance(), {
+        beatDuration: this.beatDuration,
+        beatsPerBar: spec.timeSig.beats,
+        swing: spec.swing,
+        windowMs: spec.windowMs ?? 90,
+      });
     }
 
     return {
@@ -198,6 +209,34 @@ export class MelodyRun extends Emitter<MelodyRunEvents> {
       melody,
       take: this.take(),
     };
+  }
+
+  /**
+   * What you played, in beats from the top of the music, durations and all.
+   *
+   * Unquantised on purpose: this is the input to the note-by-note comparison, and rounding it to
+   * a grid first would erase the very duration errors that comparison exists to find.
+   */
+  performance(): PlayedNote[] {
+    const open = new Map<number, number>();
+    const out: PlayedNote[] = [];
+    const beatOf = (t: number) => (t - this.transport.musicStart) / this.beatDuration;
+    for (const e of this.events) {
+      const beat = beatOf(e.time);
+      if (e.type === 'on' && e.velocity > 0) {
+        const already = open.get(e.note);
+        if (already !== undefined) out.push({ midi: e.note, startBeat: already, beats: Math.max(0.05, beat - already) });
+        open.set(e.note, beat);
+      } else {
+        const started = open.get(e.note);
+        if (started === undefined) continue;
+        open.delete(e.note);
+        out.push({ midi: e.note, startBeat: started, beats: Math.max(0.05, beat - started) });
+      }
+    }
+    const last = ((this.endedAt || this.clock.now()) - this.transport.musicStart) / this.beatDuration;
+    for (const [note, started] of open) out.push({ midi: note, startBeat: started, beats: Math.max(0.05, last - started) });
+    return out.filter((n) => n.startBeat > -0.75).sort((a, b) => a.startBeat - b.startBeat);
   }
 
   /**

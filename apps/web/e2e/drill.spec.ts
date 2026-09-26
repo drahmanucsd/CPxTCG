@@ -182,8 +182,9 @@ test('timing a head: the click runs, the take is analysed, nothing is failed', a
   await expect(page.getByText('Your tempo', { exact: true })).toBeVisible();
   await expect(page.getByText('Your eighths', { exact: true })).toBeVisible();
   await expect(page.getByText(/Where in the bar/)).toBeVisible();
-  // a take you can keep as the reference head for the tune
-  await expect(page.getByRole('button', { name: /Save the head|Replace/ })).toBeVisible();
+  // a take can be kept as the reference, with a warning about what that means
+  await expect(page.getByRole('button', { name: /Save the take|Replace/ })).toBeVisible();
+  await expect(page.getByText(/makes your mistakes the reference/)).toBeVisible();
   // and it is remembered
   await expect(page.getByText('Earlier takes')).toBeVisible();
   await page.screenshot({ path: 'test-results/melody-report.png', fullPage: true });
@@ -231,4 +232,61 @@ test('April in Paris is in the library alongside Autumn Leaves', async ({ page }
   await expect(page.getByRole('heading', { name: 'April in Paris' })).toBeVisible();
   await page.getByRole('button', { name: '4. The map' }).click();
   await expect(page.getByText(/^32 bars/)).toBeVisible();
+});
+
+test('load a head, then drill its bars note by note', async ({ page }) => {
+  await page.goto('/melody/builtin-autumn-leaves');
+  // without a melody the app is honest about what it can and cannot check
+  await expect(page.getByText(/Without one, only your timing against the click/)).toBeVisible();
+
+  await page.getByRole('button', { name: /or paste notation/ }).click();
+  // a tie: one held note, not two — the thing an ear-learned version gets wrong
+  // a short bar shifts everything after it, so it is refused rather than silently accepted
+  await page.locator('textarea').fill('M:4/4\nL:1/4\nK:Em\nA B c | d2 d2 | e4 | f4-|f4 |');
+  await page.getByRole('button', { name: 'Use this' }).click();
+  await expect(page.getByText(/Bar 1 has 3 beats, not 4/)).toBeVisible();
+
+  await page.locator('textarea').fill('M:4/4\nL:1/4\nK:Em\nA B c z | d2 d2 | e4 | f4-|f4 |');
+  await page.getByRole('button', { name: 'Use this' }).click();
+  await expect(page.getByText(/\d+ notes · \d+ bars/)).toBeVisible();
+  await expect(page.getByText(/Your playing is checked against this/)).toBeVisible();
+
+  // the rhythm drill can now work on the real notes instead of a bare figure
+  await page.getByRole('button', { name: 'Drill a rhythm' }).click();
+  await expect(page.getByRole('heading', { name: 'Hear it, play it back' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'this tune’s head' })).toBeVisible();
+  await page.getByRole('button', { name: 'this tune’s head' }).click();
+  await expect(page.getByText(/pitch, length and placement all count/)).toBeVisible();
+  await expect(page.getByText('Bars 1–2', { exact: true })).toBeVisible();
+  // and you pick the bars you keep getting wrong
+  await page.getByRole('button', { name: '3–4', exact: true }).click();
+  await expect(page.getByText('Bars 3–4', { exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/rhythm-head.png', fullPage: true });
+
+  // --- and the whole-take report now names each note rather than scoring the lot
+  await page.goto('/melody/builtin-autumn-leaves');
+  await expect(page.getByText(/graded against your recorded head/)).toBeVisible();
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByText('Counting in…')).toBeVisible({ timeout: 8000 });
+  await expect(page.getByText('Counting in…')).toBeHidden({ timeout: 8000 });
+  await page.evaluate(async () => {
+    // Scheduled from one reference so the gaps do not accumulate drift.
+    // A B C D D as written, then F natural where the book has E, then the tied note struck twice.
+    const t0 = performance.now();
+    const line: Array<[number, number]> = [[69, 0], [71, 500], [72, 1000], [74, 2000], [74, 3000], [77, 4000], [78, 6000], [78, 8000]];
+    for (const [midi, at] of line) {
+      setTimeout(() => {
+        window.__shed!.noteOn(midi);
+        setTimeout(() => window.__shed!.noteOff(midi), 300);
+      }, at - (performance.now() - t0));
+    }
+    await new Promise((r) => setTimeout(r, 9000));
+  });
+  await page.getByRole('button', { name: 'Stop' }).click();
+  await expect(page.getByText('Note by note')).toBeVisible({ timeout: 8000 });
+  // named, not scored: every problem note comes back as a sentence you can act on
+  const problems = page.locator('li', { hasText: /the book has|struck it again|Held through|Written on the|never played/ });
+  expect(await problems.count()).toBeGreaterThan(0);
+  await expect(problems.first()).toBeVisible();
+  await page.screenshot({ path: 'test-results/melody-note-by-note.png', fullPage: true });
 });

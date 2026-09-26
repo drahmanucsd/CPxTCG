@@ -1,4 +1,4 @@
-import type { MelodyTimingReport, TimingReport } from '@shed/theory';
+import type { MelodyComparison, TimingReport } from '@shed/theory';
 
 /**
  * What you get after playing a head against the click.
@@ -9,7 +9,7 @@ import type { MelodyTimingReport, TimingReport } from '@shed/theory';
  * Nothing here is pass/fail. Placement and swing are descriptions of a performance; only the
  * spread is a problem, and it is the only number given a score.
  */
-export function TimingReportView({ report, melody, bpm }: { report: TimingReport; melody?: MelodyTimingReport | null; bpm: number }) {
+export function TimingReportView({ report, melody, bpm }: { report: TimingReport; melody?: MelodyComparison | null; bpm: number }) {
   if (!report.count) {
     return <div className="card text-ink-dim">{report.headline}. {report.detail[0]}</div>;
   }
@@ -74,11 +74,15 @@ export function TimingReportView({ report, melody, bpm }: { report: TimingReport
         <section className="card space-y-2">
           <div className="label">Against the written head</div>
           <div className="text-sm">
-            {melody.pitch.message}
+            {melody.headline}
             {' · '}
             <span className="text-ink-dim">
-              {melody.missed} missed, {melody.extra} extra
-              {melody.displaced > 0 ? `, ${melody.displaced} more than a beat out of place` : ''}
+              {melody.counts.clean}/{melody.notes.length} clean
+              {melody.counts.wrongPitch ? `, ${melody.counts.wrongPitch} wrong` : ''}
+              {melody.counts.split ? `, ${melody.counts.split} split` : ''}
+              {melody.counts.merged ? `, ${melody.counts.merged} run together` : ''}
+              {melody.counts.flat ? `, ${melody.counts.flat} flattened` : ''}
+              {melody.counts.missed ? `, ${melody.counts.missed} missing` : ''}
             </span>
           </div>
         </section>

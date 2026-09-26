@@ -109,8 +109,28 @@ describe('MelodyRun', () => {
     timers.advance(2.6);
     const rep = r.report();
     expect(rep.melody).not.toBeNull();
-    expect(rep.melody!.pitch.ok).toBe(true);
-    expect(rep.melody!.missed).toBe(0);
-    expect(rep.melody!.timing.medianMs).toBeCloseTo(20, 0);
+    expect(rep.melody!.counts.missed).toBe(0);
+    expect(rep.melody!.counts.wrongPitch).toBe(0);
+    expect(rep.melody!.score).toBe(1);
+  });
+
+  it('a note the book holds, struck twice, comes back as a duration error', () => {
+    const melody = {
+      beatsPerBar: 4, source: 'builtin' as const,
+      notes: [{ midi: 60, start: 0, beats: 4 }],       // one note, a whole bar long
+    };
+    const { timers, r } = run({ bars: 1, melody, formBeats: 4, swing: false });
+    r.start(0);
+    timers.advance(2.1);
+    // played as two: the thing you do when you learned it off a recording
+    r.feed({ type: 'on', note: 60, velocity: 90, time: 2.0 });
+    r.feed({ type: 'off', note: 60, velocity: 0, time: 2.9 });
+    r.feed({ type: 'on', note: 60, velocity: 90, time: 3.0 });
+    r.feed({ type: 'off', note: 60, velocity: 0, time: 3.9 });
+    timers.advance(2.6);
+    const cmp = r.report().melody!;
+    expect(cmp.counts.split).toBe(1);
+    expect(cmp.notes[0]!.restrikes).toBe(1);
+    expect(cmp.headline).toMatch(/durations are not/);
   });
 });

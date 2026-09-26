@@ -42,6 +42,11 @@ export interface Settings {
   };
   /** the call-and-response rhythm drill */
   rhythm: {
+    /** the shipped placement ladder, or real bars of this tune's head */
+    source: 'ladder' | 'head';
+    /** head mode: how many bars at a time, and which */
+    bars: number;
+    fromBar: number;
     bpm: number;
     swing: boolean;
     clickBeats: number[] | null;
@@ -59,7 +64,7 @@ export const useSettings = create<Settings>()(
       displayStyle: 'realbook', spelling: 'key', latencyOffsetMs: 0, calibratedAt: null, midiDeviceId: null, clickVolume: 0.6, pianoVolume: 0.5,
       visualPulse: true, speakPrompts: false, hintStyle: 'both', level: 'fluency', onboarded: false, courseStage: {}, tuneStage: {}, tuneMemory: {}, reference: {},
       melodyRun: { swing: true, subdivision: 'eighth', clickBeats: [1, 3], clickSubdivision: 1, countInBars: 1, choruses: 1, useWritten: true },
-      rhythm: { bpm: 120, swing: true, clickBeats: null, callEvery: true, target: 3, windowMs: 80 },
+      rhythm: { source: 'head', bars: 2, fromBar: 0, bpm: 120, swing: true, clickBeats: null, callEvery: true, target: 3, windowMs: 80 },
       set: (patch) => set(patch),
     }),
     { name: 'shed.settings', partialize: (s) => Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v !== 'function')) as Partial<Settings> },

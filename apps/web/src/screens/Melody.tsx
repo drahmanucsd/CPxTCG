@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { MelodyRun, type LiveNote, type MelodyRunReport } from '@shed/engine';
+import { melodyFromMidi, parseAbc, parseMidiFile, shortBars, type Melody } from '@shed/theory';
 import { resolveForm, type Song, type Subdivision } from '@shed/theory';
+import { MelodyView, NoteList } from '../components/MelodyView';
 import { getAudio, unlockAudio } from '../audio/context';
 import { onMidiNote, startMidi, useComputerKeyboardPiano } from '../midi/midiService';
 import { useSettings } from '../store/settings';
@@ -37,6 +39,9 @@ export default function Melody() {
   const [report, setReport] = useState<MelodyRunReport | null>(null);
   const [showChart, setShowChart] = useState(true);
   const [setup, setSetup] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const [abc, setAbc] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
   const runRef = useRef<MelodyRun | null>(null);
   const offRef = useRef<(() => void) | null>(null);
   /** set when the screen unmounts mid-run: the transport still has to be stopped, but a
@@ -73,7 +78,7 @@ export default function Melody() {
       bpm: r.spec.bpm, swing: r.spec.swing, clickBeats: r.spec.clickBeats, bars: r.bars,
       steadiness: r.timing.steadiness, spreadMs: r.timing.spreadMs, medianMs: r.timing.medianMs,
       playedBpm: r.timing.playedBpm, swingRatio: r.timing.swing?.ratio ?? null,
-      melodyMatch: r.melody ? r.melody.pitch.match : null,
+      melodyMatch: r.melody ? r.melody.score : null,
       report: r.timing,
     });
   }, [id]);
@@ -122,6 +127,45 @@ export default function Melody() {
     offRef.current?.();
     runRef.current?.stop();
   }, []);
+
+  /** Store a head, whatever it came from. formBeats is the form, so choruses can be laid out. */
+  const putHead = async (m: Melody) => {
+    if (!id) return;
+    const extent = Math.max(...m.notes.map((n) => n.start + n.beats), 0);
+    const barsIn = Math.max(1, Math.ceil(extent / (m.beatsPerBar || 4)));
+    await db.melodies.put({
+      songId: id, title: song?.title ?? '', melody: m, updatedAt: Date.now(),
+      formBeats: Math.max(formBeats, barsIn * (m.beatsPerBar || 4)),
+    });
+    setImportError(null);
+    setPasting(false);
+  };
+
+  const importMidi = async (f: File) => {
+    try {
+      const file = parseMidiFile(new Uint8Array(await f.arrayBuffer()));
+      // 1/12 of a beat resolves eighths, triplets and sixteenths alike
+      const m = melodyFromMidi(file, { quantise: 1 / 12 });
+      if (!m.notes.some((n) => n.midi !== null)) throw new Error('No notes found in that file');
+      await putHead(m);
+    } catch (e) { setImportError((e as Error).message); }
+  };
+
+  const importAbc = async () => {
+    try {
+      const m = parseAbc(abc);
+      if (!m.notes.some((n) => n.midi !== null)) throw new Error('No notes found in that notation');
+      // a bar that does not add up shifts every note after it, silently
+      const bad = shortBars(m);
+      if (bad.length) {
+        throw new Error(
+          `Bar ${bad[0]!.bar + 1} has ${bad[0]!.beats} beats, not ${m.beatsPerBar}${bad.length > 1 ? ` (and ${bad.length - 1} more)` : ''}. ` +
+          'Everything after a short bar lands on the wrong beat — add a rest (z) or fix the lengths.',
+        );
+      }
+      await putHead(m);
+    } catch (e) { setImportError((e as Error).message); }
+  };
 
   const saveHead = async () => {
     if (!id || !report) return;
@@ -193,20 +237,75 @@ export default function Melody() {
       {report && !running && (
         <>
           <TimingReportView report={report.timing} melody={report.melody} bpm={bpm} />
+          {report.melody && (
+            <section className="card space-y-3">
+              <div className="label">Note by note</div>
+              <MelodyView comparison={report.melody} beatsPerBar={beatsPerBar} />
+              <ul className="text-sm text-ink-dim space-y-1">
+                {report.melody.detail.map((d, i) => <li key={i}>{d}</li>)}
+              </ul>
+              <NoteList comparison={report.melody} onPickBar={(bar) => {
+                settings.set({ rhythm: { ...settings.rhythm, source: 'head', fromBar: bar - (bar % settings.rhythm.bars) } });
+                if (id) nav(`/rhythm/${encodeURIComponent(id)}`);
+              }} />
+              {report.melody.notes.some((n) => n.verdict !== 'clean') && (
+                <div className="text-xs text-ink-faint">Click a bar to drill it: hear it, play it back, until it is right.</div>
+              )}
+            </section>
+          )}
           {id && report.take.notes.length >= 8 && (
             <section className="card flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
-                <div className="font-medium">{stored ? 'Replace the reference head' : 'Keep this as the head'}</div>
+                <div className="font-medium">Keep this take as the head</div>
                 <div className="text-sm text-ink-dim">
-                  {stored
-                    ? 'Overwrite the head you saved before with this take.'
-                    : 'Save this take as the written melody for this tune. From then on your pitches get checked too, and timing is measured against where each note belongs rather than against the nearest click.'}
+                  Only worth doing if you know it is right. If you learned the tune off a recording, load the book&rsquo;s version below instead —
+                  saving your own version makes your mistakes the reference.
                 </div>
               </div>
-              <button className="btn btn-ghost" onClick={() => void saveHead()}>{stored ? 'Replace' : 'Save the head'}</button>
+              <button className="btn btn-ghost" onClick={() => void saveHead()}>{stored ? 'Replace' : 'Save the take'}</button>
             </section>
           )}
         </>
+      )}
+
+      {/* ------------------------------------------------------ the written head */}
+      {id && !running && (
+        <section className="card space-y-3">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <div className="label flex-1">The written head</div>
+            {stored && (
+              <>
+                <span className="text-sm text-ink-dim">{stored.melody.notes.filter((n) => n.midi !== null).length} notes · {Math.round(stored.formBeats / beatsPerBar)} bars</span>
+                <button className="text-xs text-ink-faint hover:text-bad" onClick={() => void db.melodies.delete(id)}>remove</button>
+              </>
+            )}
+          </div>
+          <div className="text-sm text-ink-dim">
+            {stored
+              ? 'Your playing is checked against this: pitches, note lengths and placement.'
+              : 'Without one, only your timing against the click can be measured \u2014 not whether you played the right notes, or held them as long as the book does.'}
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="btn btn-ghost cursor-pointer">
+              {stored ? 'Replace with a MIDI file' : 'Load a MIDI file'}
+              <input type="file" accept=".mid,.midi,audio/midi" className="hidden" onChange={(e) => e.target.files?.[0] && void importMidi(e.target.files[0])} />
+            </label>
+            <button className="text-sm text-ink-dim hover:text-ink" onClick={() => setPasting((v) => !v)}>{pasting ? 'cancel' : 'or paste notation'}</button>
+            {importError && <span className="text-bad text-sm">{importError}</span>}
+          </div>
+          {pasting && (
+            <div className="space-y-2">
+              <textarea
+                className="input w-full font-mono text-xs" rows={6} value={abc} onChange={(e) => setAbc(e.target.value)}
+                placeholder={'M:4/4\nL:1/8\nK:C\nz6 G G-|G8 |'}
+              />
+              <div className="text-xs text-ink-faint">
+                ABC notation. <code>-</code> ties two notes into one held note, <code>(3</code> makes a triplet, <code>^</code> and <code>_</code> are sharp and flat.
+              </div>
+              <button className="btn btn-ghost" onClick={() => void importAbc()} disabled={!abc.trim()}>Use this</button>
+            </div>
+          )}
+        </section>
       )}
 
       {/* ---------------------------------------------------------- setup */}

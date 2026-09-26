@@ -10,6 +10,8 @@ export * from './analysis.js';
 export * from './melody.js';
 export * from './figures.js';
 export * from './timing.js';
+export * from './compare.js';
+export * from './midiFile.js';
 export * from './walkingBass.js';
 export * from './groove.js';
 export * from './chartText.js';
