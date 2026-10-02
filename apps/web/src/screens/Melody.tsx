@@ -290,7 +290,7 @@ export default function Melody() {
               {stored ? 'Replace with a MIDI file' : 'Load a MIDI file'}
               <input type="file" accept=".mid,.midi,audio/midi" className="hidden" onChange={(e) => e.target.files?.[0] && void importMidi(e.target.files[0])} />
             </label>
-            <button className="text-sm text-ink-dim hover:text-ink" onClick={() => setPasting((v) => !v)}>{pasting ? 'cancel' : 'or paste notation'}</button>
+            <button className="btn btn-ghost" onClick={() => setPasting((v) => !v)}>{pasting ? 'Cancel' : 'Paste notation'}</button>
             {importError && <span className="text-bad text-sm">{importError}</span>}
           </div>
           {pasting && (

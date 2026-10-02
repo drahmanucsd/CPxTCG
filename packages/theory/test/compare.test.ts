@@ -174,3 +174,50 @@ describe('finding the performance before grading it', () => {
     expect(c.counts.clean).toBe(4);
   });
 });
+
+describe('the Tune Up problem', () => {
+  // bars 1-4 as the Real Book prints them: the arrival note enters on the "and of 4" of bar 2
+  // and is tied through bar 3 — which is the whole difficulty of this head
+  const HEAD = 'X:1\nM:4/4\nL:1/8\nK:D\nA6 G2 | _E4 =E3 F- | F8 | z8 |';
+  const written = parseAbc(HEAD).notes;
+
+  it('the page gives one attack on the "and of 4", held four and a half beats', () => {
+    const sounded = written.filter((n) => n.midi !== null);
+    expect(sounded).toHaveLength(5);
+    const arrival = sounded[4]!;
+    expect(arrival.midi).toBe(66);          // F#4, the 3rd of Dmaj7
+    expect(arrival.start).toBe(7.5);
+    expect(arrival.beats).toBe(4.5);
+  });
+
+  it('playing that arrival on the downbeat is named as flattening, not as being late', () => {
+    const r = swingRatio(200);
+    const played: PlayedNote[] = [
+      { midi: 69, startBeat: 0, beats: 3 },
+      { midi: 67, startBeat: 3, beats: 1 },
+      { midi: 63, startBeat: 4, beats: 2 },
+      { midi: 64, startBeat: 6, beats: 1.5 },
+      { midi: 66, startBeat: 8, beats: 4 },   // on the 1 of bar 3 instead of the "and of 4"
+    ];
+    const c = compareMelody(written, played, { beatDuration: 60 / 200, swing: true, ratio: r });
+    const arrival = c.notes[4]!;
+    expect(arrival.anticipates).toBe(true);
+    expect(arrival.verdict).toBe('flat');
+    expect(arrival.message).toMatch(/Written on the "4 and" and tied over the bar line — you played it on the 1/);
+    expect(c.headline).toBe('1 syncopation flattened');
+  });
+
+  it('played where the page puts it, at a swung bop tempo, it is clean', () => {
+    const r = swingRatio(200);
+    const played: PlayedNote[] = [
+      { midi: 69, startBeat: 0, beats: 3 },
+      { midi: 67, startBeat: 3, beats: 1 },
+      { midi: 63, startBeat: 4, beats: 2 },
+      { midi: 64, startBeat: 6, beats: 1.5 },
+      { midi: 66, startBeat: 7 + r, beats: 5 - r },
+    ];
+    const c = compareMelody(written, played, { beatDuration: 60 / 200, swing: true, ratio: r });
+    expect(c.score).toBe(1);
+    expect(c.headline).toBe('Note for note, in time');
+  });
+});

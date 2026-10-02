@@ -239,7 +239,7 @@ test('load a head, then drill its bars note by note', async ({ page }) => {
   // without a melody the app is honest about what it can and cannot check
   await expect(page.getByText(/Without one, only your timing against the click/)).toBeVisible();
 
-  await page.getByRole('button', { name: /or paste notation/ }).click();
+  await page.getByRole('button', { name: 'Paste notation' }).click();
   // a tie: one held note, not two — the thing an ear-learned version gets wrong
   // a short bar shifts everything after it, so it is refused rather than silently accepted
   await page.locator('textarea').fill('M:4/4\nL:1/4\nK:Em\nA B c | d2 d2 | e4 | f4-|f4 |');

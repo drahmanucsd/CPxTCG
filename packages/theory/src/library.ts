@@ -161,8 +161,8 @@ key: Ab | style: swing | tempo: 220
 `title: Tune Up
 composer: Miles Davis
 key: D | style: swing | tempo: 200
-[A] { Em7 | A7 | Dmaj7 | Dmaj7 | Dm7 | G7 | Cmaj7 | Cmaj7 | Cm7 | F7 | Bbmaj7 | Bbmaj7 | Ebmaj7 | Ebmaj7 | 1) Em7 | A7 }
-2) Dmaj7 | Dmaj7 |`,
+[A] { Em7 | A7 | Dmaj7 | Dmaj7 | Dm7 | G7 | Cmaj7 | Cmaj7 | Cm7 | F7 | Bbmaj7 | Bbmaj7 | 1) Em7 | F7 | Bbmaj7 | A7 }
+2) Em7 | A7 | Dmaj7 | Dmaj7 |`,
 
 `title: Misty
 composer: Erroll Garner
